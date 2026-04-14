@@ -1,14 +1,38 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { QRCodeSVG } from 'qrcode.react';
+import { Howl } from 'howler';
+import { Landmark, Users, BookOpen, ScrollText, CheckCircle, XCircle } from 'lucide-react';
+
+// Historic Audio setup
+const bgMusic = new Howl({
+  src: ['https://actions.google.com/sounds/v1/ambiences/wind_and_birds.ogg'], // placeholder ambient
+  loop: true,
+  volume: 0.3,
+});
+
+const sfxPageTurn = new Howl({
+  src: ['https://actions.google.com/sounds/v1/foley/book_drop.ogg'], // placeholder
+  volume: 0.8,
+});
+
+const sfxCorrect = new Howl({
+  src: ['https://actions.google.com/sounds/v1/cartoon/cartoon_boing.ogg'], // placeholder
+  volume: 0.6,
+});
+
+const sfxIncorrect = new Howl({
+  src: ['https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg'], // placeholder
+  volume: 0.6,
+});
 
 export default function HostView() {
   const [gameState, setGameState] = useState(null);
   const [gameUrl, setGameUrl] = useState('');
   const socketRef = useRef(null);
+  const playButtonRef = useRef(null); // to initialize audio context
 
   useEffect(() => {
-    // Connect to server on the same hostname (works for LAN)
     const serverUrl = `http://${window.location.hostname}:3000`;
     const socket = io(serverUrl);
     socketRef.current = socket;
@@ -33,14 +57,39 @@ export default function HostView() {
       setGameState(data);
     });
 
-    return () => socket.disconnect();
+    return () => {
+      socket.disconnect();
+      bgMusic.stop();
+    };
   }, []);
 
+  useEffect(() => {
+    // Dynamic backgrounds based on state
+    if (gameState?.status === 'waiting') {
+      document.body.className = 'bg-library';
+    } else {
+      document.body.className = 'bg-manuscript';
+    }
+
+    if (gameState?.status === 'active') {
+      sfxPageTurn.play();
+    }
+    if (gameState?.status === 'consequence') {
+      if (gameState.wasCorrect) sfxCorrect.play();
+      else sfxIncorrect.play();
+    }
+  }, [gameState?.status, gameState?.wasCorrect]);
+
   const startGame = () => {
+    // Requires physical click to start browser audio
+    if (!bgMusic.playing()) {
+      bgMusic.play();
+    }
     socketRef.current?.emit('start_game');
   };
 
   const handleProceed = () => {
+    sfxPageTurn.play();
     socketRef.current?.emit('proceed');
   };
 
@@ -58,7 +107,6 @@ export default function HostView() {
   const { status, players, currentPhase, votes, votedCount, totalPhases, currentPhaseIndex, consequenceText, winningOptionIndex, wasCorrect } = gameState;
   const joinUrl = gameUrl ? `${gameUrl}/join` : '';
 
-  // Calculate total votes for progress bars
   const totalVotes = Object.values(votes || {}).reduce((a, b) => a + b, 0);
 
   return (
@@ -67,6 +115,9 @@ export default function HostView() {
       {/* ========== WAITING / LOBBY ========== */}
       {status === 'waiting' && (
         <div className="glass-panel text-center" id="lobby-panel">
+          <div className="icon-container">
+            <BookOpen size={64} />
+          </div>
           <h1>Sucesos de las Islas Filipinas</h1>
           <p className="subtitle">A historical branching narrative based on Rizal's annotations</p>
 
@@ -77,14 +128,14 @@ export default function HostView() {
                   <QRCodeSVG
                     value={joinUrl}
                     size={200}
-                    bgColor="#ffffff"
-                    fgColor="#0f172a"
+                    bgColor="#f4e8d3"
+                    fgColor="#1a1614"
                     level="M"
                     includeMargin={true}
                   />
                 </div>
                 <p className="qr-url">{joinUrl}</p>
-                <p className="qr-hint">Scan or visit the URL to join!</p>
+                <p className="qr-hint">Scan or visit the URL to join</p>
               </>
             ) : (
               <p style={{ color: 'var(--text-muted)' }}>Loading game URL...</p>
@@ -92,9 +143,11 @@ export default function HostView() {
           </div>
 
           <div className="players-section">
-            <h3>Joined Players ({players.length})</h3>
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Users size={24} /> Joined Scholars ({players.length})
+            </h3>
             {players.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Waiting for players to join...</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Waiting for scholars to join...</p>
             ) : (
               <div className="player-badges">
                 {players.map((p, i) => (
@@ -110,10 +163,10 @@ export default function HostView() {
             className="btn btn-primary"
             onClick={startGame}
             disabled={players.length === 0}
-            style={{ marginTop: '2rem', opacity: players.length === 0 ? 0.5 : 1 }}
+            style={{ marginTop: '2.5rem', opacity: players.length === 0 ? 0.5 : 1 }}
             id="start-game-btn"
           >
-            Begin the Story
+            Commence the Annotation
           </button>
         </div>
       )}
@@ -122,8 +175,8 @@ export default function HostView() {
       {status === 'active' && currentPhase && (
         <div className="glass-panel" id="active-panel">
           <div className="phase-header">
-            <span className="badge phase-badge">Phase {currentPhase.phase} of {totalPhases}</span>
-            <span className="badge vote-count-badge">{votedCount} / {players.length} voted</span>
+            <span className="badge phase-badge">Chapter {currentPhase.phase} of {totalPhases}</span>
+            <span className="badge vote-count-badge">{votedCount} / {players.length} resolved</span>
           </div>
 
           <h2 className="scenario-title">The Journey Continues</h2>
@@ -147,7 +200,7 @@ export default function HostView() {
                     <div className="option-bar-content">
                       <span className="option-label">{opt}</span>
                       {totalVotes > 0 && (
-                        <span className="option-votes">{voteCount} vote{voteCount !== 1 ? 's' : ''} ({percentage}%)</span>
+                        <span className="option-votes">{voteCount} decree{voteCount !== 1 ? 's' : ''} ({percentage}%)</span>
                       )}
                     </div>
                   </div>
@@ -158,8 +211,8 @@ export default function HostView() {
 
           <p className="waiting-text">
             {votedCount < players.length
-              ? `Waiting for ${players.length - votedCount} more vote${players.length - votedCount !== 1 ? 's' : ''}...`
-              : 'All votes are in! Processing...'}
+              ? `Awaiting ${players.length - votedCount} more scholar${players.length - votedCount !== 1 ? 's' : ''}...`
+              : 'All decrees are in! Unrolling the manuscript...'}
           </p>
         </div>
       )}
@@ -167,15 +220,15 @@ export default function HostView() {
       {/* ========== CONSEQUENCE / EXPLANATION ========== */}
       {status === 'consequence' && (
         <div className={`glass-panel ${wasCorrect ? 'consequence-correct' : 'consequence-incorrect'}`} id="consequence-panel">
-          <div className="consequence-icon">
-            {wasCorrect ? '✅' : '📜'}
+          <div className="icon-container">
+            {wasCorrect ? <CheckCircle size={64} /> : <XCircle size={64} />}
           </div>
-          <h2>{wasCorrect ? 'Correct Decision!' : 'History Tells a Different Story...'}</h2>
+          <h2>{wasCorrect ? 'Historical Accuracy Upheld!' : 'History Tells a Different Story...'}</h2>
           
           {currentPhase && winningOptionIndex >= 0 && (
             <div className="chosen-option">
-              <span className="badge" style={{ marginBottom: '0.5rem' }}>The group chose:</span>
-              <p style={{ fontStyle: 'italic', fontSize: '1.1rem' }}>"{currentPhase.options[winningOptionIndex]}"</p>
+              <span className="badge" style={{ marginBottom: '0.5rem' }}>The collective decreed:</span>
+              <p style={{ fontStyle: 'italic', fontSize: '1.25rem' }}>"{currentPhase.options[winningOptionIndex]}"</p>
             </div>
           )}
 
@@ -183,10 +236,10 @@ export default function HostView() {
             <p>{consequenceText}</p>
           </div>
 
-          <button className="btn btn-primary" onClick={handleProceed} id="proceed-btn" style={{ marginTop: '1.5rem' }}>
+          <button className="btn btn-primary" onClick={handleProceed} id="proceed-btn" style={{ marginTop: '2rem' }}>
             {wasCorrect 
-              ? (currentPhaseIndex >= totalPhases - 1 ? 'See the Ending' : 'Continue the Journey →') 
-              : 'Try Again →'}
+              ? (currentPhaseIndex >= totalPhases - 1 ? 'Behold the Legacy' : 'Turn the Page →') 
+              : 'Revise the Annals →'}
           </button>
         </div>
       )}
@@ -194,21 +247,23 @@ export default function HostView() {
       {/* ========== ENDING ========== */}
       {status === 'ending' && (
         <div className="glass-panel ending-panel" id="ending-panel">
-          <div className="ending-icon">🏛️</div>
-          <h1>Journey Complete</h1>
-          <h2 style={{ color: 'var(--success)', marginBottom: '1.5rem' }}>Congratulations!</h2>
+          <div className="icon-container">
+            <Landmark size={80} />
+          </div>
+          <h1>Legacy Forged</h1>
+          <h2 style={{ color: '#8ce6af', marginBottom: '1.5rem' }}>The Work Endures</h2>
           <p className="ending-text">
-            You have successfully traced Jose Rizal's journey in annotating Antonio de Morga's
+            You have successfully traced Jose Rizal's historic path in annotating Antonio de Morga's
             <em> Sucesos de las Islas Filipinas</em>. Through your decisions, you experienced the
-            challenges, choices, and determination that shaped this landmark work of Philippine historiography.
+            complexities of illuminating a suppressed history.
           </p>
           <p className="ending-text">
-            Rizal believed that to fairly judge the present, one must first understand the past.
-            His annotated edition became the first Philippine history written from the perspective of a Filipino —
-            a revolutionary act of scholarship that the Spanish authorities feared enough to ban.
+            Rizal maintained that to fairly judge the present, a nation must first understand its past.
+            His annotation proved to be a revolutionary act of scholarship, cementing the first Philippine history 
+            written from the standpoint of a Filipino.
           </p>
           <div className="ending-players">
-            <h3>Scholars of History</h3>
+            <h3>Honored Scholars of the Realm</h3>
             <div className="player-badges">
               {players.map((p) => (
                 <span key={p.id} className="badge player-badge">{p.name}</span>

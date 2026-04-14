@@ -1,5 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
+import { Howl } from 'howler';
+import { Pen, Scroll, Eye, ShieldCheck, Hourglass } from 'lucide-react';
+
+const sfxClick = new Howl({
+  src: ['https://actions.google.com/sounds/v1/foley/pen_click.ogg'], // placeholder
+  volume: 0.8,
+});
 
 export default function PlayerView() {
   const [name, setName] = useState('');
@@ -11,7 +18,9 @@ export default function PlayerView() {
   const lastPhaseRef = useRef(-1);
 
   useEffect(() => {
-    // Connect to server on the same hostname (works for LAN)
+    // Dynamic background
+    document.body.className = 'bg-manuscript';
+
     const serverUrl = `http://${window.location.hostname}:3000`;
     const socket = io(serverUrl);
     socketRef.current = socket;
@@ -30,13 +39,11 @@ export default function PlayerView() {
     socket.on('update_game_state', (data) => {
       setGameState(data);
 
-      // Reset voting state when a new phase starts
       if (data.status === 'active' && data.currentPhaseIndex !== lastPhaseRef.current) {
         setHasVoted(false);
         setSelectedOption(-1);
         lastPhaseRef.current = data.currentPhaseIndex;
       }
-      // Also reset when going back to active after wrong answer (same phase replay)
       if (data.status === 'active' && !data.wasCorrect) {
         setHasVoted(false);
         setSelectedOption(-1);
@@ -49,6 +56,7 @@ export default function PlayerView() {
   const handleJoin = (e) => {
     e.preventDefault();
     if (name.trim()) {
+      sfxClick.play();
       socketRef.current?.emit('join_game', { playerName: name.trim() });
       setJoined(true);
     }
@@ -56,19 +64,21 @@ export default function PlayerView() {
 
   const handleVote = (index) => {
     if (hasVoted) return;
+    sfxClick.play();
     socketRef.current?.emit('submit_vote', { optionIndex: index });
     setHasVoted(true);
     setSelectedOption(index);
   };
 
-  // ===== JOIN SCREEN =====
   if (!joined) {
     return (
       <div className="container animate-fade" style={{ maxWidth: '500px' }}>
         <div className="glass-panel text-center">
-          <div className="join-icon">🏛️</div>
-          <h2>Join the Session</h2>
-          <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>Enter your name to participate</p>
+          <div className="icon-container">
+            <Pen size={64} />
+          </div>
+          <h2>Join the Assembly</h2>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontStyle: 'italic' }}>Sign your name into the annals</p>
           <form onSubmit={handleJoin}>
             <input
               type="text"
@@ -79,20 +89,19 @@ export default function PlayerView() {
               autoFocus
               id="player-name-input"
             />
-            <button type="submit" className="btn btn-primary" id="join-btn">Join Game</button>
+            <button type="submit" className="btn btn-primary" id="join-btn">Inscribe Name</button>
           </form>
         </div>
       </div>
     );
   }
 
-  // Loading state
   if (!gameState) {
     return (
       <div className="container animate-fade" style={{ maxWidth: '500px' }}>
         <div className="glass-panel text-center">
           <div className="loading-spinner"></div>
-          <p style={{ marginTop: '1rem', color: 'var(--text-muted)' }}>Connecting...</p>
+          <p style={{ marginTop: '1rem', color: 'var(--text-muted)' }}>Seeking connection...</p>
         </div>
       </div>
     );
@@ -106,11 +115,13 @@ export default function PlayerView() {
       {/* ===== WAITING ===== */}
       {status === 'waiting' && (
         <div className="glass-panel text-center" id="player-waiting">
-          <div className="waiting-icon">⏳</div>
-          <h2>Welcome, {name}!</h2>
-          <p>You're in! Please wait for the host to start the game.</p>
+          <div className="icon-container">
+            <Hourglass size={64} />
+          </div>
+          <h2>Greetings, {name}!</h2>
+          <p>Your carriage has arrived. Please await the host to begin the historical account.</p>
           <div className="player-count-badge">
-            <span className="badge">{players.length} player{players.length !== 1 ? 's' : ''} connected</span>
+            <span className="badge">{players.length} scholar{players.length !== 1 ? 's' : ''} assembled</span>
           </div>
         </div>
       )}
@@ -119,15 +130,16 @@ export default function PlayerView() {
       {status === 'active' && currentPhase && (
         <div className="glass-panel" id="player-voting">
           <h3 className="text-center" style={{ marginBottom: '0.5rem', color: 'var(--accent)' }}>
-            Phase {currentPhase.phase}
+            Chapter {currentPhase.phase}
           </h3>
           <h3 className="text-center" style={{ marginBottom: '1.5rem' }}>
-            {hasVoted ? 'Vote Submitted!' : 'Cast Your Vote!'}
+            {hasVoted ? 'Decree Sealed!' : 'Cast Your Decree!'}
           </h3>
 
           {hasVoted && (
             <div className="vote-submitted-msg animate-fade">
-              <p>✅ Your vote has been recorded. Wait for all players to finish voting.</p>
+              <Scroll size={24} />
+              <p>Your testament has been recorded. Wait for all decrees.</p>
             </div>
           )}
 
@@ -151,18 +163,22 @@ export default function PlayerView() {
       {/* ===== CONSEQUENCE ===== */}
       {status === 'consequence' && (
         <div className="glass-panel text-center" id="player-consequence">
-          <div className="look-icon">📺</div>
-          <h2>Look at the Host Screen!</h2>
-          <p style={{ color: 'var(--text-muted)' }}>The story is unfolding...</p>
+          <div className="icon-container">
+            <Eye size={64} />
+          </div>
+          <h2>Behold the Script</h2>
+          <p style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '1.2rem' }}>Look to the host screen to read the consequence...</p>
         </div>
       )}
 
       {/* ===== ENDING ===== */}
       {status === 'ending' && (
         <div className="glass-panel text-center" id="player-ending">
-          <div className="ending-icon">🎉</div>
-          <h2>Journey Complete!</h2>
-          <p>Congratulations, {name}! You helped trace Rizal's historic path.</p>
+          <div className="icon-container">
+            <ShieldCheck size={64} />
+          </div>
+          <h2>History Written!</h2>
+          <p style={{ fontSize: '1.25rem' }}>Master {name}, you have honorably guided the path of enlightenment.</p>
         </div>
       )}
     </div>
