@@ -4,8 +4,9 @@ import { Howl } from 'howler';
 import { Pen, Scroll, Eye, ShieldCheck, Hourglass } from 'lucide-react';
 
 const sfxClick = new Howl({
-  src: ['https://actions.google.com/sounds/v1/foley/pen_click.ogg'], // placeholder
+  src: ['https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3'], // Working alternative click
   volume: 0.8,
+  html5: true,
 });
 
 export default function PlayerView() {

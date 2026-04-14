@@ -524,14 +524,40 @@ input[type="text"]:focus {
   left: 0;
   width: 100vw;
   height: 100vh;
-  z-index: -1;
+  z-index: -2;
   background-size: cover;
   background-position: center;
-  background-color: var(--bg-color);
-  background-blend-mode: multiply;
-  
-  /* Dramatic Crossfade and Slow Zoom */
-  animation: cinematicFadeIn 3s ease forwards, slowZoom 30s ease-in-out infinite alternate;
+  animation: slowZoom 30s ease-in-out infinite alternate;
+}
+
+/* ========== Theater Doors Wipe ========== */
+.theater-door {
+  position: fixed;
+  top: 0;
+  width: 50vw;
+  height: 100vh;
+  background: #110e0c; /* Deep charred wood */
+  z-index: 9999;
+  transition: transform 0.8s cubic-bezier(0.85, 0, 0.15, 1);
+  pointer-events: none;
+}
+
+.door-left {
+  left: 0;
+  transform: translateX(-100%);
+  border-right: 4px solid var(--accent);
+  box-shadow: 20px 0 50px rgba(0,0,0,0.9);
+}
+
+.door-right {
+  right: 0;
+  transform: translateX(100%);
+  border-left: 4px solid var(--accent);
+  box-shadow: -20px 0 50px rgba(0,0,0,0.9);
+}
+
+.door-left.closed, .door-right.closed {
+  transform: translateX(0);
 }
 
 @keyframes slowZoom {
@@ -553,6 +579,61 @@ input[type="text"]:focus {
   background: rgba(0,0,0,0.4);
   z-index: 0;
   pointer-events: none;
+}
+
+#consequence-panel {
+  position: fixed;
+  bottom: 5vh;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 900px;
+  width: 92%;
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 1.5rem 2rem;
+  background: rgba(20, 15, 10, 0.95);
+  box-shadow: 0 -20px 60px rgba(0,0,0,0.9), inset 0 0 20px rgba(0,0,0,0.6);
+  border-top: 2px solid var(--accent);
+  z-index: 10;
+}
+
+#consequence-panel h2 {
+  font-size: 1.6rem;
+  margin-bottom: 0.5rem;
+}
+
+#consequence-panel .icon-container {
+  margin-bottom: 0.5rem;
+}
+
+#consequence-panel .icon-container svg {
+  width: 36px;
+  height: 36px;
+}
+
+#consequence-panel .consequence-text-box {
+  padding: 1rem;
+  margin-top: 1rem;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+#consequence-panel .consequence-text-box p {
+  font-size: 1.15rem;
+  line-height: 1.6;
+}
+
+#consequence-panel .chosen-option {
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+#consequence-panel .chosen-option p {
+  font-size: 1.1rem;
+}
+
+#consequence-panel .btn {
+  margin-top: 1rem;
+  padding: 0.6rem 1.5rem;
 }
 
 @media (max-width: 600px) {

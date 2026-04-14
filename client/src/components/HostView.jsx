@@ -4,37 +4,54 @@ import { QRCodeSVG } from 'qrcode.react';
 import { Howl } from 'howler';
 import { Landmark, Users, BookOpen, ScrollText, CheckCircle, XCircle } from 'lucide-react';
 
-// Historic Audio setup
 const bgMusic = new Howl({
-  src: ['https://upload.wikimedia.org/wikipedia/commons/4/4b/Isaac_Alb%C3%A9niz_-_Asturias_%28Leyenda%29.ogg'], // Classical Spanish Guitar
+  src: ['/bgMusic.ogg'], // User-provided local background music
   loop: true,
   volume: 0.3,
+  html5: true, 
 });
 
 const sfxPageTurn = new Howl({
-  src: ['https://actions.google.com/sounds/v1/foley/book_drop.ogg'], // placeholder
+  src: ['https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3'], // dramatic heavy sweep
   volume: 0.8,
+  html5: true
 });
 
 const sfxCorrect = new Howl({
-  src: ['https://actions.google.com/sounds/v1/cartoon/cartoon_boing.ogg'], // placeholder
+  src: ['https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3'], // success chime
   volume: 0.6,
+  html5: true
 });
 
 const sfxIncorrect = new Howl({
-  src: ['https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg'], // placeholder
+  src: ['https://assets.mixkit.co/active_storage/sfx/2997/2997-preview.mp3'], // error beep
   volume: 0.6,
+  html5: true
 });
 
 export default function HostView() {
   const [gameState, setGameState] = useState(null);
+  const [displayState, setDisplayState] = useState(null); // Used to buffer UI so it doesn't leak ahead of transitions
   const [gameUrl, setGameUrl] = useState('');
+  const [displayBg, setDisplayBg] = useState('/historical_manuscript_bg.png');
+  const [fade, setFade] = useState(false);
   const socketRef = useRef(null);
 
   useEffect(() => {
     // Clear body classes so we can use our dedicated cinematic div
     document.body.className = '';
     
+    // Attempt to start background music as early as possible
+    const attemptPlayMusic = () => {
+      if (!bgMusic.playing()) {
+        bgMusic.play();
+      }
+    };
+    
+    window.addEventListener('click', attemptPlayMusic);
+    window.addEventListener('keydown', attemptPlayMusic);
+    attemptPlayMusic(); // Autoplay attempt (might be blocked by browser until interacted)
+
     const serverUrl = `http://${window.location.hostname}:3000`;
     const socket = io(serverUrl);
     socketRef.current = socket;
@@ -62,6 +79,8 @@ export default function HostView() {
 
     return () => {
       socket.disconnect();
+      window.removeEventListener('click', attemptPlayMusic);
+      window.removeEventListener('keydown', attemptPlayMusic);
       bgMusic.stop();
     };
   }, []);
@@ -88,11 +107,57 @@ export default function HostView() {
     socketRef.current?.emit('proceed');
   };
 
-  if (!gameState) {
+  // Dynamic Background Logic BEFORE early return
+  const getBackgroundImage = (currentState) => {
+    if (!currentState) return '/historical_manuscript_bg.png';
+    const { status, consequenceImagePath } = currentState;
+    if (status === 'consequence' || status === 'ending') {
+      return consequenceImagePath || '/historical_manuscript_bg.png';
+    }
+    return status === 'waiting' ? '/colonial_library_bg.png' : '/historical_manuscript_bg.png';
+  };
+
+  const currentBgImage = getBackgroundImage(gameState);
+
+  useEffect(() => {
+    if (!gameState) return;
+    
+    // Immediate render if first load or if status is identical (e.g. vote count just updated)
+    if (!displayState || (gameState.status === displayState.status && gameState.currentPhaseIndex === displayState.currentPhaseIndex)) {
+      setDisplayState(gameState);
+      
+      // If backgrounds differ (edge cases), swap them gracefully
+      if (currentBgImage !== displayBg) {
+        setDisplayBg(currentBgImage);
+      }
+      return;
+    }
+
+    // A massive state change occurred (status change or phase transition)
+    setFade(true); // Close doors
+    const timer = setTimeout(() => {
+      setDisplayState(gameState); // Update the text behind the closed doors
+      setDisplayBg(currentBgImage); // Swap image behind the closed doors
+      const openTimer = setTimeout(() => {
+        setFade(false); // Open doors
+      }, 300); // 300ms pause with doors fully closed
+    }, 800); // 800ms gives the CSS animation time to cover the screen
+
+    return () => clearTimeout(timer);
+  }, [gameState, currentBgImage, displayBg]); // Depend on gameState heavily for buffering
+
+  if (!displayState) {
     return (
       <>
-        <div className="cinematic-bg" style={{ backgroundImage: "url('/historical_manuscript_bg.png')" }} />
+        <div 
+          className="cinematic-bg" 
+          style={{ backgroundImage: `url(${displayBg})` }} 
+        />
         <div className="cinematic-overlay" />
+        
+        {/* Dramatic Doors Transition */}
+        <div className={`theater-door door-left ${fade ? 'closed' : ''}`} />
+        <div className={`theater-door door-right ${fade ? 'closed' : ''}`} />
         <div className="container animate-fade">
           <div className="glass-panel text-center">
             <div className="loading-spinner"></div>
@@ -103,30 +168,24 @@ export default function HostView() {
     );
   }
 
-  const { status, players, currentPhase, votes, votedCount, totalPhases, currentPhaseIndex, consequenceText, consequenceImagePath, winningOptionIndex, wasCorrect } = gameState;
+  const { status, players, currentPhase, votes, votedCount, totalPhases, currentPhaseIndex, consequenceText, consequenceImagePath, winningOptionIndex, wasCorrect } = displayState;
   const joinUrl = gameUrl ? `${gameUrl}/join` : '';
   const totalVotes = Object.values(votes || {}).reduce((a, b) => a + b, 0);
-
-  // Dynamic Background Logic
-  const getBackgroundImage = () => {
-    if (status === 'consequence' || status === 'ending') {
-      return consequenceImagePath || '/historical_manuscript_bg.png';
-    }
-    return status === 'waiting' ? '/colonial_library_bg.png' : '/historical_manuscript_bg.png';
-  };
-
-  const currentBgImage = getBackgroundImage();
 
   return (
     <>
       <div 
         className="cinematic-bg" 
-        key={currentBgImage} // Keys force the animation to restart on image change
-        style={{ backgroundImage: `url(${currentBgImage})` }} 
+        style={{ backgroundImage: `url(${displayBg})` }} 
       />
       <div className="cinematic-overlay" />
       
-      <div className="container animate-fade">
+      {/* Dramatic Doors Transition */}
+      <div className={`theater-door door-left ${fade ? 'closed' : ''}`} />
+      <div className={`theater-door door-right ${fade ? 'closed' : ''}`} />
+      
+      {/* Hide the UI panel completely when the door is closed so it doesn't leak the next state early */}
+      <div className="container animate-fade" style={{ opacity: fade ? 0 : 1, transition: 'opacity 0.2s', pointerEvents: fade ? 'none' : 'auto' }}>
         {/* ========== WAITING / LOBBY ========== */}
         {status === 'waiting' && (
           <div className="glass-panel text-center" id="lobby-panel">
