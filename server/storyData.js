@@ -8,6 +8,7 @@
 const storyData = [
   {
     phase: 1,
+    phaseIntroLore: "The scent of ancient parchment fills the air. To cure the present, you must uncover the hidden truths of the past. Your people need a foundation.",
     scenario: "You are Jose Rizal in 1888. You recently published Noli Me Tangere, which sketched the present state of your native land. You realized that to help your people fairly judge the present and estimate progress something must be done.",
     question: "What is your next crucial step?",
     options: [
@@ -33,6 +34,7 @@ const storyData = [
   },
   {
     phase: 2,
+    phaseIntroLore: "The library is a vast ocean of forgotten chronicles. Finding an objective history is like finding a pearl in a tempest. You pull manuscripts from the shelves, seeking the elusive voice of truth.",
     scenario: "You decide to look for a reliable source about the early history of the Philippines. You find several Spanish chronicles in the British Museum.",
     question: "Which one do you choose to annotate?",
     options: [
@@ -58,6 +60,7 @@ const storyData = [
   },
   {
     phase: 3,
+    phaseIntroLore: "With Antonio de Morga's 'Sucesos de las Islas Filipinas' in your hands, the grueling work begins. Hand-copying an entire manuscript takes an immense toll on both your health and finances.",
     scenario: "You have started replicating Morga's work by hand. However, publishing a book in Europe is expensive.",
     question: "How will you fund the publication of your annotations?",
     options: [
@@ -83,6 +86,7 @@ const storyData = [
   },
   {
     phase: 4,
+    phaseIntroLore: "Having painstakingly copied the archaic Spanish text, you now face the monumentous task of annotation. Your notes must correct centuries of systemic colonial bias.",
     scenario: "You are examining the 8 chapters of Morga's work. The first 7 chapters are about political events and the terms of Governor-Generals.",
     question: "Which chapter is the most interesting to you and has vital ethnographic value?",
     options: [
@@ -108,6 +112,7 @@ const storyData = [
   },
   {
     phase: 5,
+    phaseIntroLore: "The manuscript is finally annotated. It stands as a profound testament to the ancient civilization of the Philippines. But knowing the truth is meaningless if your countrymen cannot wield it.",
     scenario: "You successfully published the annotated 'Sucesos' and want to share it with your homeland. It has become the first Philippine history from the point of view of a Filipino.",
     question: "What happens to the book when it reaches the Philippines in the late 19th century?",
     options: [
@@ -133,4 +138,6 @@ const storyData = [
   }
 ];
 
-module.exports = storyData;
+const gameIntroLore = "London, 1889. You are Dr. Jose Rizal. You have diagnosed the ills of your motherland in your novel, Noli Me Tangere. Yet, your people remain ignorant of their true heritage before the Spanish conquest. Knowing that an enslaved people must reclaim their history to forge a nation, you sit before the towering bookshelves of the British Museum. A grand endeavor lies before you...";
+
+module.exports = { storyData, gameIntroLore };

@@ -3,7 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const ip = require('ip'); // Used to get local network IP
-const storyData = require('./storyData');
+const { storyData, gameIntroLore } = require('./storyData');
 
 const app = express();
 app.use(cors());
@@ -32,7 +32,8 @@ let gameState = {
   consequenceText: '',     // text to show when answer is incorrect
   winningOptionIndex: -1,  // the option that won the vote
   wasCorrect: false,       // whether the winning vote was correct
-  consequenceImagePath: '' // path to the specific consequence image
+  consequenceImagePath: '',// path to the specific consequence image
+  cutsceneText: ''         // text to show during a cutscene
 };
 
 /**
@@ -49,6 +50,7 @@ function buildBroadcastPayload() {
     votes: gameState.votes,
     votedCount: gameState.votedPlayers.size,
     consequenceText: gameState.consequenceText,
+    cutsceneText: gameState.cutsceneText,
     winningOptionIndex: gameState.winningOptionIndex,
     wasCorrect: gameState.wasCorrect,
     consequenceImagePath: gameState.consequenceImagePath,
@@ -99,11 +101,12 @@ io.on('connection', (socket) => {
   socket.on('start_game', () => {
     if (gameState.players.length === 0) return; // Need at least 1 player
 
-    gameState.status = 'active';
+    gameState.status = 'cutscene';
+    gameState.cutsceneText = gameIntroLore;
     gameState.currentPhaseIndex = 0;
     resetVotes();
 
-    console.log('Game started!');
+    console.log('Game started! Showing intro cutscene.');
     io.emit('update_game_state', buildBroadcastPayload());
   });
 
@@ -168,23 +171,30 @@ io.on('connection', (socket) => {
     io.emit('update_game_state', buildBroadcastPayload());
   });
 
-  // 4. proceed: Triggered by Host to advance past consequence screen
+  // 4. proceed: Triggered by Host to advance past consequence screen or cutscene
   socket.on('proceed', () => {
-    if (gameState.status === 'consequence') {
+    if (gameState.status === 'cutscene') {
+      // Finished cutscene, go to active voting phase
+      gameState.status = 'active';
+      console.log(`Proceeding to active phase ${gameState.currentPhaseIndex}`);
+      io.emit('update_game_state', buildBroadcastPayload());
+    }
+    else if (gameState.status === 'consequence') {
       if (gameState.wasCorrect) {
-        // Was correct — advance to next phase
+        // Was correct — advance to next phase or ending
         if (gameState.currentPhaseIndex >= storyData.length - 1) {
           gameState.status = 'ending';
         } else {
           gameState.currentPhaseIndex++;
-          gameState.status = 'active';
+          gameState.status = 'cutscene';
+          gameState.cutsceneText = storyData[gameState.currentPhaseIndex].phaseIntroLore;
         }
       } else {
         // Was incorrect — replay the same phase
         gameState.status = 'active';
       }
       resetVotes();
-      console.log(`Proceeding to phase ${gameState.currentPhaseIndex + 1}, status: ${gameState.status}`);
+      console.log(`Proceeding to status: ${gameState.status}`);
       io.emit('update_game_state', buildBroadcastPayload());
     }
   });

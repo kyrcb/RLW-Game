@@ -29,6 +29,61 @@ const sfxIncorrect = new Howl({
   html5: true
 });
 
+const CinematicNarrator = ({ text, onComplete }) => {
+  const [sentences, setSentences] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  useEffect(() => {
+    // Split sentences precisely using regex
+    const matches = text.match(/[^.!?]+[.!?]*/g) || [text];
+    setSentences(matches.map(s => s.trim()).filter(Boolean));
+    setCurrentIndex(0);
+    window.speechSynthesis.cancel();
+  }, [text]);
+
+  const readSentence = (index) => {
+    if (index >= sentences.length) {
+      if (onComplete) onComplete();
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(sentences[index]);
+    utterance.rate = 0.85; // Dramatic, slow pacing
+    utterance.pitch = 0.9;
+    
+    utterance.onend = () => {
+      // Small pause before advancing
+      setTimeout(() => {
+        setCurrentIndex(prev => prev + 1);
+      }, 400); 
+    };
+
+    utterance.onerror = () => {
+      setCurrentIndex(prev => prev + 1);
+    };
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  useEffect(() => {
+    if (sentences.length === 0) return;
+    readSentence(currentIndex);
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, [sentences, currentIndex]);
+
+  return (
+    <div className="narrator-text-container">
+      {sentences.slice(0, currentIndex + 1).map((s, i) => (
+        <span key={i} className={`narrator-sentence ${i === currentIndex ? 'active' : 'read'}`}>
+          {s}{' '}
+        </span>
+      ))}
+    </div>
+  );
+};
+
 export default function HostView() {
   const [gameState, setGameState] = useState(null);
   const [displayState, setDisplayState] = useState(null); // Used to buffer UI so it doesn't leak ahead of transitions
@@ -103,6 +158,7 @@ export default function HostView() {
   };
 
   const handleProceed = () => {
+    window.speechSynthesis.cancel(); // Stop TTS immediately if host skips
     sfxPageTurn.play();
     socketRef.current?.emit('proceed');
   };
@@ -153,7 +209,7 @@ export default function HostView() {
           className="cinematic-bg" 
           style={{ backgroundImage: `url(${displayBg})` }} 
         />
-        <div className="cinematic-overlay" />
+        <div className={`cinematic-overlay ${!displayState || displayState.status === 'cutscene' ? 'dark-mode' : ''}`} />
         
         {/* Dramatic Doors Transition */}
         <div className={`theater-door door-left ${fade ? 'closed' : ''}`} />
@@ -178,7 +234,7 @@ export default function HostView() {
         className="cinematic-bg" 
         style={{ backgroundImage: `url(${displayBg})` }} 
       />
-      <div className="cinematic-overlay" />
+      <div className={`cinematic-overlay ${status === 'cutscene' ? 'dark-mode' : ''}`} />
       
       {/* Dramatic Doors Transition */}
       <div className={`theater-door door-left ${fade ? 'closed' : ''}`} />
@@ -241,6 +297,21 @@ export default function HostView() {
               id="start-game-btn"
             >
               Commence the Annotation
+            </button>
+          </div>
+        )}
+
+        {/* ========== CUTSCENE / LORE ========== */}
+        {status === 'cutscene' && (
+          <div className="text-center" id="cutscene-panel" style={{ maxWidth: '900px', margin: '0 auto', paddingTop: '10vh' }}>
+            <h2 style={{ fontSize: '1.2rem', marginBottom: '3rem', letterSpacing: '8px', textTransform: 'uppercase', color: 'var(--accent)', opacity: 0.8 }}>
+              Historical Context
+            </h2>
+            <CinematicNarrator 
+              text={displayState.cutsceneText} 
+            />
+            <button className="btn outline mt-4 animate-fade" onClick={handleProceed} style={{ animationDelay: '2s', padding: '0.8rem 2rem', opacity: 0.6, marginTop: '4rem' }}>
+              Skip Sequence →
             </button>
           </div>
         )}
