@@ -31,7 +31,8 @@ let gameState = {
   votedPlayers: new Set(), // keep track of who has voted to prevent double voting
   consequenceText: '',     // text to show when answer is incorrect
   winningOptionIndex: -1,  // the option that won the vote
-  wasCorrect: false        // whether the winning vote was correct
+  wasCorrect: false,       // whether the winning vote was correct
+  consequenceImagePath: '' // path to the specific consequence image
 };
 
 /**
@@ -50,6 +51,7 @@ function buildBroadcastPayload() {
     consequenceText: gameState.consequenceText,
     winningOptionIndex: gameState.winningOptionIndex,
     wasCorrect: gameState.wasCorrect,
+    consequenceImagePath: gameState.consequenceImagePath,
     currentPhase: phase ? {
       phase: phase.phase,
       scenario: phase.scenario,
@@ -68,6 +70,7 @@ function resetVotes() {
   gameState.winningOptionIndex = -1;
   gameState.wasCorrect = false;
   gameState.consequenceText = '';
+  gameState.consequenceImagePath = '';
 }
 
 io.on('connection', (socket) => {
@@ -139,6 +142,10 @@ io.on('connection', (socket) => {
       const currentPhase = storyData[gameState.currentPhaseIndex];
       const isCorrect = winningOption === currentPhase.correctOptionIndex;
       gameState.wasCorrect = isCorrect;
+      
+      const outcome = currentPhase.consequences[winningOption];
+      gameState.consequenceText = outcome.text;
+      gameState.consequenceImagePath = outcome.imagePath;
 
       if (isCorrect) {
         // Correct: move to next phase or ending
@@ -148,13 +155,11 @@ io.on('connection', (socket) => {
         } else {
           // Show consequence screen even for correct — it contains the "why" explanation
           gameState.status = 'consequence';
-          gameState.consequenceText = currentPhase.consequence;
           console.log(`Correct! Showing explanation before advancing.`);
         }
       } else {
         // Incorrect: show consequence
         gameState.status = 'consequence';
-        gameState.consequenceText = currentPhase.consequence;
         console.log(`Incorrect. Showing consequence for phase ${currentPhase.phase}`);
       }
     }

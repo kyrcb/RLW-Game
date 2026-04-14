@@ -517,6 +517,44 @@ input[type="text"]:focus {
   margin: 0;
 }
 
+/* ========== Cinematic Effects ========== */
+.cinematic-bg {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -1;
+  background-size: cover;
+  background-position: center;
+  background-color: var(--bg-color);
+  background-blend-mode: multiply;
+  
+  /* Dramatic Crossfade and Slow Zoom */
+  animation: cinematicFadeIn 3s ease forwards, slowZoom 30s ease-in-out infinite alternate;
+}
+
+@keyframes slowZoom {
+  0% { transform: scale(1.0); }
+  100% { transform: scale(1.15); }
+}
+
+@keyframes cinematicFadeIn {
+  0% { opacity: 0; filter: brightness(0); }
+  100% { opacity: 1; filter: brightness(1); }
+}
+
+.cinematic-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0,0,0,0.4);
+  z-index: 0;
+  pointer-events: none;
+}
+
 @media (max-width: 600px) {
   .glass-panel { padding: 1.5rem; }
   h1 { font-size: 2rem; }
