@@ -1,93 +1,220 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { io } from 'socket.io-client';
-
-// CLAUDE logic notes:
-// 1. Connect to the WebSocket at `http://localhost:3000` (or dynamically grabbed domain).
-// 2. Listen for 'init_data' to grab the gameUrl and current gameState.
-// 3. Render the QR code using a library like `qrcode.react` based on the gameUrl so players can join.
-// 4. In `waiting` status, show players joining.
-// 5. In `active` status, show the `scenario` and `question`.
-// 6. In `consequence` status, show the failure consequence and a button to proceed.
+import { QRCodeSVG } from 'qrcode.react';
 
 export default function HostView() {
   const [gameState, setGameState] = useState(null);
   const [gameUrl, setGameUrl] = useState('');
-
-  // Stub data for visual layout testing
-  const dummyState = {
-    status: 'waiting', // try changing to 'active' or 'consequence' to test UI
-    players: [{ id: 1, name: 'Jose' }, { id: 2, name: 'Paciano' }],
-    currentPhase: {
-      scenario: "You are Jose Rizal in 1888. You recently published Noli Me Tangere, which sketched the present state of your native land.",
-      question: "What is your next crucial step?",
-      options: [
-        "Write another novel immediately.",
-        "Study and write about the Philippines' past.",
-        "Organize an armed rebellion."
-      ]
-    }
-  };
+  const socketRef = useRef(null);
 
   useEffect(() => {
-    // CLAUDE: Initialize socket connection here.
-    // const socket = io('http://localhost:3000');
-    // socket.on('init_data', (data) => { setGameState(data.gameState); setGameUrl(data.gameUrl); });
-    // socket.on('update_game_state', (newState) => { setGameState(newState); });
+    // Connect to server on the same hostname (works for LAN)
+    const serverUrl = `http://${window.location.hostname}:3000`;
+    const socket = io(serverUrl);
+    socketRef.current = socket;
+
+    socket.on('init_data', (data) => {
+      setGameUrl(data.gameUrl);
+      setGameState({
+        status: data.status,
+        players: data.players,
+        currentPhaseIndex: data.currentPhaseIndex,
+        totalPhases: data.totalPhases,
+        votes: data.votes,
+        votedCount: data.votedCount,
+        consequenceText: data.consequenceText,
+        winningOptionIndex: data.winningOptionIndex,
+        wasCorrect: data.wasCorrect,
+        currentPhase: data.currentPhase
+      });
+    });
+
+    socket.on('update_game_state', (data) => {
+      setGameState(data);
+    });
+
+    return () => socket.disconnect();
   }, []);
 
   const startGame = () => {
-    // CLAUDE: Emit 'start_game' here
+    socketRef.current?.emit('start_game');
   };
 
-  const status = gameState?.status || dummyState.status;
+  const handleProceed = () => {
+    socketRef.current?.emit('proceed');
+  };
+
+  if (!gameState) {
+    return (
+      <div className="container animate-fade">
+        <div className="glass-panel text-center">
+          <div className="loading-spinner"></div>
+          <p style={{ marginTop: '1rem', color: 'var(--text-muted)' }}>Connecting to server...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const { status, players, currentPhase, votes, votedCount, totalPhases, currentPhaseIndex, consequenceText, winningOptionIndex, wasCorrect } = gameState;
+  const joinUrl = gameUrl ? `${gameUrl}/join` : '';
+
+  // Calculate total votes for progress bars
+  const totalVotes = Object.values(votes || {}).reduce((a, b) => a + b, 0);
 
   return (
     <div className="container animate-fade">
+
+      {/* ========== WAITING / LOBBY ========== */}
       {status === 'waiting' && (
-        <div className="glass-panel text-center">
+        <div className="glass-panel text-center" id="lobby-panel">
           <h1>Sucesos de las Islas Filipinas</h1>
-          <p>A historical branching narrative.</p>
-          
-          <div style={{ margin: '2rem 0' }}>
-            {/* CLAUDE: Render the actual QR Code here */}
-            <div style={{ width: 200, height: 200, background: 'white', margin: '0 auto', display: 'flex', alignItems:'center', justifyContent:'center', color: 'black' }}>
-              [QR CODE PLACEHOLDER]<br/>
-              {gameUrl || 'http://<LOCAL_IP>:5173/join'}
-            </div>
-            <p style={{ marginTop: '1rem', color: 'var(--accent)' }}>Scan to join!</p>
+          <p className="subtitle">A historical branching narrative based on Rizal's annotations</p>
+
+          <div className="qr-section">
+            {joinUrl ? (
+              <>
+                <div className="qr-container">
+                  <QRCodeSVG
+                    value={joinUrl}
+                    size={200}
+                    bgColor="#ffffff"
+                    fgColor="#0f172a"
+                    level="M"
+                    includeMargin={true}
+                  />
+                </div>
+                <p className="qr-url">{joinUrl}</p>
+                <p className="qr-hint">Scan or visit the URL to join!</p>
+              </>
+            ) : (
+              <p style={{ color: 'var(--text-muted)' }}>Loading game URL...</p>
+            )}
           </div>
 
-          <div style={{ textAlign: 'left', marginTop: '2rem' }}>
-            <h3>Joined Players ({dummyState.players.length})</h3>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              {dummyState.players.map((p, i) => (
-                <span key={i} className="badge">{p.name}</span>
-              ))}
-            </div>
+          <div className="players-section">
+            <h3>Joined Players ({players.length})</h3>
+            {players.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Waiting for players to join...</p>
+            ) : (
+              <div className="player-badges">
+                {players.map((p, i) => (
+                  <span key={p.id} className="badge player-badge animate-fade" style={{ animationDelay: `${i * 0.1}s` }}>
+                    {p.name}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
-          <button className="btn btn-primary" onClick={startGame} style={{ marginTop: '2rem' }}>Begin the Story</button>
+          <button
+            className="btn btn-primary"
+            onClick={startGame}
+            disabled={players.length === 0}
+            style={{ marginTop: '2rem', opacity: players.length === 0 ? 0.5 : 1 }}
+            id="start-game-btn"
+          >
+            Begin the Story
+          </button>
         </div>
       )}
 
-      {status === 'active' && (
-        <div className="glass-panel">
-          <span className="badge" style={{ marginBottom: '1rem' }}>Phase 1</span>
-          <h2>The Journey Begins</h2>
-          <p style={{ fontSize: '1.25rem' }}>{dummyState.currentPhase.scenario}</p>
-          <hr style={{ borderColor: 'var(--glass-border)', margin: '1.5rem 0' }} />
-          <h3 style={{ color: 'var(--accent)' }}>{dummyState.currentPhase.question}</h3>
-          
-          <div style={{ marginTop: '2rem' }}>
-            {/* CLAUDE: Show voting progress here, maybe visual bars for each option if you want to be fancy. */}
-            {dummyState.currentPhase.options.map((opt, i) => (
-              <div key={i} style={{ marginBottom: '1rem', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
-                {opt}
-              </div>
-            ))}
+      {/* ========== ACTIVE / VOTING ========== */}
+      {status === 'active' && currentPhase && (
+        <div className="glass-panel" id="active-panel">
+          <div className="phase-header">
+            <span className="badge phase-badge">Phase {currentPhase.phase} of {totalPhases}</span>
+            <span className="badge vote-count-badge">{votedCount} / {players.length} voted</span>
           </div>
+
+          <h2 className="scenario-title">The Journey Continues</h2>
+          <p className="scenario-text">{currentPhase.scenario}</p>
+
+          <hr className="divider" />
+
+          <h3 className="question-text">{currentPhase.question}</h3>
+
+          <div className="options-list">
+            {currentPhase.options.map((opt, i) => {
+              const voteCount = votes?.[i] || 0;
+              const percentage = totalVotes > 0 ? Math.round((voteCount / totalVotes) * 100) : 0;
+              return (
+                <div key={i} className="option-bar-container">
+                  <div className="option-bar-bg">
+                    <div
+                      className="option-bar-fill"
+                      style={{ width: `${percentage}%` }}
+                    ></div>
+                    <div className="option-bar-content">
+                      <span className="option-label">{opt}</span>
+                      {totalVotes > 0 && (
+                        <span className="option-votes">{voteCount} vote{voteCount !== 1 ? 's' : ''} ({percentage}%)</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <p className="waiting-text">
+            {votedCount < players.length
+              ? `Waiting for ${players.length - votedCount} more vote${players.length - votedCount !== 1 ? 's' : ''}...`
+              : 'All votes are in! Processing...'}
+          </p>
+        </div>
+      )}
+
+      {/* ========== CONSEQUENCE / EXPLANATION ========== */}
+      {status === 'consequence' && (
+        <div className={`glass-panel ${wasCorrect ? 'consequence-correct' : 'consequence-incorrect'}`} id="consequence-panel">
+          <div className="consequence-icon">
+            {wasCorrect ? '✅' : '📜'}
+          </div>
+          <h2>{wasCorrect ? 'Correct Decision!' : 'History Tells a Different Story...'}</h2>
           
-          <p style={{ textAlign: 'center', marginTop: '2rem', color: 'var(--text-muted)' }}>Waiting for players to vote...</p>
+          {currentPhase && winningOptionIndex >= 0 && (
+            <div className="chosen-option">
+              <span className="badge" style={{ marginBottom: '0.5rem' }}>The group chose:</span>
+              <p style={{ fontStyle: 'italic', fontSize: '1.1rem' }}>"{currentPhase.options[winningOptionIndex]}"</p>
+            </div>
+          )}
+
+          <div className="consequence-text-box">
+            <p>{consequenceText}</p>
+          </div>
+
+          <button className="btn btn-primary" onClick={handleProceed} id="proceed-btn" style={{ marginTop: '1.5rem' }}>
+            {wasCorrect 
+              ? (currentPhaseIndex >= totalPhases - 1 ? 'See the Ending' : 'Continue the Journey →') 
+              : 'Try Again →'}
+          </button>
+        </div>
+      )}
+
+      {/* ========== ENDING ========== */}
+      {status === 'ending' && (
+        <div className="glass-panel ending-panel" id="ending-panel">
+          <div className="ending-icon">🏛️</div>
+          <h1>Journey Complete</h1>
+          <h2 style={{ color: 'var(--success)', marginBottom: '1.5rem' }}>Congratulations!</h2>
+          <p className="ending-text">
+            You have successfully traced Jose Rizal's journey in annotating Antonio de Morga's
+            <em> Sucesos de las Islas Filipinas</em>. Through your decisions, you experienced the
+            challenges, choices, and determination that shaped this landmark work of Philippine historiography.
+          </p>
+          <p className="ending-text">
+            Rizal believed that to fairly judge the present, one must first understand the past.
+            His annotated edition became the first Philippine history written from the perspective of a Filipino —
+            a revolutionary act of scholarship that the Spanish authorities feared enough to ban.
+          </p>
+          <div className="ending-players">
+            <h3>Scholars of History</h3>
+            <div className="player-badges">
+              {players.map((p) => (
+                <span key={p.id} className="badge player-badge">{p.name}</span>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </div>

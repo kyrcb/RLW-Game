@@ -8,7 +8,7 @@ const storyData = require('./storyData');
 const app = express();
 app.use(cors());
 
-// CLAUDE: If we eventually serve the Vite build from Express, you'd add:
+// If we eventually serve the Vite build from Express:
 // app.use(express.static('../client/dist'));
 
 const server = http.createServer(app);
@@ -23,57 +23,184 @@ const PORT = 3000;
 const LOCAL_IP = ip.address(); // Get the local Wi-Fi IP address
 
 // === GAME STATE ===
-// CLAUDE: Manage your game state here.
 let gameState = {
   status: 'waiting', // waiting | active | consequence | ending
-  players: [], // list of player objects: { id, name }
-  currentPhaseIndex: 0, 
-  votes: {}, // mapping of optionIndex -> voteCount
-  votedPlayers: new Set() // keep track of who has voted to prevent double voting
+  players: [],       // list of player objects: { id, name }
+  currentPhaseIndex: 0,
+  votes: {},         // mapping of optionIndex -> voteCount
+  votedPlayers: new Set(), // keep track of who has voted to prevent double voting
+  consequenceText: '',     // text to show when answer is incorrect
+  winningOptionIndex: -1,  // the option that won the vote
+  wasCorrect: false        // whether the winning vote was correct
 };
+
+/**
+ * Build the payload to broadcast to all clients.
+ * Includes current phase data from storyData so clients don't need the data themselves.
+ */
+function buildBroadcastPayload() {
+  const phase = storyData[gameState.currentPhaseIndex] || null;
+  return {
+    status: gameState.status,
+    players: gameState.players,
+    currentPhaseIndex: gameState.currentPhaseIndex,
+    totalPhases: storyData.length,
+    votes: gameState.votes,
+    votedCount: gameState.votedPlayers.size,
+    consequenceText: gameState.consequenceText,
+    winningOptionIndex: gameState.winningOptionIndex,
+    wasCorrect: gameState.wasCorrect,
+    currentPhase: phase ? {
+      phase: phase.phase,
+      scenario: phase.scenario,
+      question: phase.question,
+      options: phase.options
+    } : null
+  };
+}
+
+/**
+ * Reset votes for a new round.
+ */
+function resetVotes() {
+  gameState.votes = {};
+  gameState.votedPlayers = new Set();
+  gameState.winningOptionIndex = -1;
+  gameState.wasCorrect = false;
+  gameState.consequenceText = '';
+}
 
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
 
   // Send initial data to newly connected client
-  socket.emit('init_data', { gameUrl: `http://${LOCAL_IP}:5173`, gameState });
+  socket.emit('init_data', {
+    gameUrl: `http://${LOCAL_IP}:5173`,
+    ...buildBroadcastPayload()
+  });
 
-  /* 
-  CLAUDE: Implement the following socket listeners:
-  
-  1. `join_game`: payload: { playerName }
-     - Add player to gameState.players
-     - Broadcast updated players list to all via `update_game_state`
+  // 1. join_game: payload: { playerName }
+  socket.on('join_game', ({ playerName }) => {
+    // Prevent duplicate joins
+    const existing = gameState.players.find(p => p.id === socket.id);
+    if (existing) return;
 
-  2. `start_game`: 
-     - Change status to 'active', currentPhaseIndex to 0
-     - Reset votes
-     - Broadcast to all
+    gameState.players.push({ id: socket.id, name: playerName });
+    console.log(`${playerName} joined the game (${gameState.players.length} players)`);
 
-  3. `submit_vote`: payload: { optionIndex }
-     - If game is active and player hasn't voted:
-       - Increment vote count for that option
-       - Mark player as voted
-     - If all players have voted:
-       - Calculate the winning option.
-       - Check if it's the correctOptionIndex from storyData[currentPhaseIndex].
-       - If Correct: move to next phase (or 'ending' if it's the last phase).
-       - If Incorrect: change status to 'consequence', set a payload with the consequence text.
-     - Broadcast updated state.
+    // Broadcast updated state to ALL clients
+    io.emit('update_game_state', buildBroadcastPayload());
+  });
 
-  4. `proceed`: (Triggered by Host to skip consequence or force next phase)
-     - Reset votes
-     - Modify state status and indices accordingly
-     - Broadcast updated state.
-  */
+  // 2. start_game: no payload
+  socket.on('start_game', () => {
+    if (gameState.players.length === 0) return; // Need at least 1 player
 
+    gameState.status = 'active';
+    gameState.currentPhaseIndex = 0;
+    resetVotes();
+
+    console.log('Game started!');
+    io.emit('update_game_state', buildBroadcastPayload());
+  });
+
+  // 3. submit_vote: payload: { optionIndex }
+  socket.on('submit_vote', ({ optionIndex }) => {
+    // Only allow votes during active state
+    if (gameState.status !== 'active') return;
+
+    // Prevent double voting
+    if (gameState.votedPlayers.has(socket.id)) return;
+
+    // Only allow votes from actual players
+    const isPlayer = gameState.players.some(p => p.id === socket.id);
+    if (!isPlayer) return;
+
+    // Record the vote
+    gameState.votes[optionIndex] = (gameState.votes[optionIndex] || 0) + 1;
+    gameState.votedPlayers.add(socket.id);
+
+    console.log(`Vote received from ${socket.id}: option ${optionIndex} (${gameState.votedPlayers.size}/${gameState.players.length})`);
+
+    // Check if all players have voted
+    if (gameState.votedPlayers.size >= gameState.players.length) {
+      // Calculate winning option (highest vote count)
+      let maxVotes = 0;
+      let winningOption = 0;
+      for (const [optIdx, count] of Object.entries(gameState.votes)) {
+        if (count > maxVotes) {
+          maxVotes = count;
+          winningOption = parseInt(optIdx);
+        }
+      }
+
+      gameState.winningOptionIndex = winningOption;
+
+      const currentPhase = storyData[gameState.currentPhaseIndex];
+      const isCorrect = winningOption === currentPhase.correctOptionIndex;
+      gameState.wasCorrect = isCorrect;
+
+      if (isCorrect) {
+        // Correct: move to next phase or ending
+        if (gameState.currentPhaseIndex >= storyData.length - 1) {
+          gameState.status = 'ending';
+          console.log('Game finished! Correct answer on final phase.');
+        } else {
+          // Show consequence screen even for correct — it contains the "why" explanation
+          gameState.status = 'consequence';
+          gameState.consequenceText = currentPhase.consequence;
+          console.log(`Correct! Showing explanation before advancing.`);
+        }
+      } else {
+        // Incorrect: show consequence
+        gameState.status = 'consequence';
+        gameState.consequenceText = currentPhase.consequence;
+        console.log(`Incorrect. Showing consequence for phase ${currentPhase.phase}`);
+      }
+    }
+
+    // Broadcast updated state (vote counts update in real-time)
+    io.emit('update_game_state', buildBroadcastPayload());
+  });
+
+  // 4. proceed: Triggered by Host to advance past consequence screen
+  socket.on('proceed', () => {
+    if (gameState.status === 'consequence') {
+      if (gameState.wasCorrect) {
+        // Was correct — advance to next phase
+        if (gameState.currentPhaseIndex >= storyData.length - 1) {
+          gameState.status = 'ending';
+        } else {
+          gameState.currentPhaseIndex++;
+          gameState.status = 'active';
+        }
+      } else {
+        // Was incorrect — replay the same phase
+        gameState.status = 'active';
+      }
+      resetVotes();
+      console.log(`Proceeding to phase ${gameState.currentPhaseIndex + 1}, status: ${gameState.status}`);
+      io.emit('update_game_state', buildBroadcastPayload());
+    }
+  });
+
+  // Handle disconnection
   socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
-    // CLAUDE: optionally handle player removal if they disconnect
+    const player = gameState.players.find(p => p.id === socket.id);
+    if (player) {
+      console.log(`${player.name} disconnected`);
+      gameState.players = gameState.players.filter(p => p.id !== socket.id);
+      gameState.votedPlayers.delete(socket.id);
+      io.emit('update_game_state', buildBroadcastPayload());
+    } else {
+      console.log('A spectator disconnected:', socket.id);
+    }
   });
 });
 
 server.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
-  console.log(`Game URL: http://${LOCAL_IP}:5173`);
+  console.log(`\n🏛️  Rizal's Annotation Game — Server`);
+  console.log(`   Server listening on port ${PORT}`);
+  console.log(`   Game URL: http://${LOCAL_IP}:5173`);
+  console.log(`   Players join at: http://${LOCAL_IP}:5173/join\n`);
 });
