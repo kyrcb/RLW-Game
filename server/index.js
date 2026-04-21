@@ -8,8 +8,30 @@ const { storyData, gameIntroLore } = require('./storyData');
 const app = express();
 app.use(cors());
 
-// If we eventually serve the Vite build from Express:
-// app.use(express.static('../client/dist'));
+// Free Google Translate TTS Proxy Route
+app.get('/api/tts', async (req, res) => {
+  const { text, lang = 'tl' } = req.query;
+  if (!text) return res.status(400).send('No text provided');
+  
+  try {
+    const googleTTSUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${lang}&client=tw-ob`;
+    const response = await fetch(googleTTSUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0'
+      }
+    });
+    
+    if (!response.ok) throw new Error('Google TTS API Error');
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    
+    res.set('Content-Type', 'audio/mpeg');
+    res.send(buffer);
+  } catch (error) {
+    console.error('TTS Error:', error);
+    res.status(500).send('TTS Generation Failed');
+  }
+});
 
 const server = http.createServer(app);
 const io = new Server(server, {

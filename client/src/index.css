@@ -597,13 +597,8 @@ input[type="text"]:focus {
 .narrator-sentence {
   opacity: 0;
   animation: fadeInSentence 1.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-  display: inline;
-}
-
-.narrator-sentence.read {
-  opacity: 0.4;
-  animation: none;
-  transition: opacity 1.5s ease;
+  display: block;
+  text-align: center;
 }
 
 @keyframes fadeInSentence {

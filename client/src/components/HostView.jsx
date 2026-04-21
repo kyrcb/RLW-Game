@@ -13,73 +13,88 @@ const bgMusic = new Howl({
 
 const sfxPageTurn = new Howl({
   src: ['https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3'], // dramatic heavy sweep
-  volume: 0.8,
-  html5: true
+  volume: 0.8
 });
 
 const sfxCorrect = new Howl({
   src: ['https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3'], // success chime
-  volume: 0.6,
-  html5: true
+  volume: 0.6
 });
 
 const sfxIncorrect = new Howl({
   src: ['https://assets.mixkit.co/active_storage/sfx/2997/2997-preview.mp3'], // error beep
-  volume: 0.6,
-  html5: true
+  volume: 0.6
 });
 
-const CinematicNarrator = ({ text, onComplete }) => {
-  const [sentences, setSentences] = useState([]);
+const CinematicNarrator = ({ sentences, onComplete }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const audioRef = useRef(null);
 
   useEffect(() => {
-    // Split sentences precisely using regex
-    const matches = text.match(/[^.!?]+[.!?]*/g) || [text];
-    setSentences(matches.map(s => s.trim()).filter(Boolean));
     setCurrentIndex(0);
-    window.speechSynthesis.cancel();
-  }, [text]);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+  }, [sentences]);
 
   const readSentence = (index) => {
-    if (index >= sentences.length) {
+    if (!sentences || index >= sentences.length) {
       if (onComplete) onComplete();
       return;
     }
 
-    const utterance = new SpeechSynthesisUtterance(sentences[index]);
-    utterance.rate = 0.85; // Dramatic, slow pacing
-    utterance.pitch = 0.9;
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+
+    const textToSpeak = sentences[index].tl;
+    const serverUrl = `http://${window.location.hostname}:3000`;
+    const audio = new Audio(`${serverUrl}/api/tts?text=${encodeURIComponent(textToSpeak)}&lang=tl`);
+    audioRef.current = audio;
     
-    utterance.onend = () => {
-      // Small pause before advancing
+    audio.onended = () => {
       setTimeout(() => {
         setCurrentIndex(prev => prev + 1);
       }, 400); 
     };
 
-    utterance.onerror = () => {
+    audio.onerror = () => {
       setCurrentIndex(prev => prev + 1);
     };
 
-    window.speechSynthesis.speak(utterance);
+    // Browsers block autoplay if no interaction, but since user pressed a button prior to this state, it should be fine.
+    audio.play().catch(err => {
+      if (err.name === 'AbortError') {
+        // Ignored: The play request was intentionally interrupted by a cleanup pause (e.g. React StrictMode or user skip)
+        return;
+      }
+      console.error("Audio playback prevented:", err);
+      // Fallback: just advance immediately
+      setCurrentIndex(prev => prev + 1);
+    });
   };
 
   useEffect(() => {
-    if (sentences.length === 0) return;
+    if (!sentences || sentences.length === 0) return;
     readSentence(currentIndex);
     return () => {
-      window.speechSynthesis.cancel();
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
     };
   }, [sentences, currentIndex]);
 
+  if (!sentences || sentences.length === 0) return null;
+
   return (
-    <div className="narrator-text-container">
-      {sentences.slice(0, currentIndex + 1).map((s, i) => (
-        <span key={i} className={`narrator-sentence ${i === currentIndex ? 'active' : 'read'}`}>
-          {s}{' '}
-        </span>
-      ))}
+    <div className="narrator-text-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="narrator-sentence active narrator-tl" style={{ fontSize: '2.4rem', fontWeight: 'bold', marginBottom: '2rem', lineHeight: '1.4' }}>
+        {sentences[currentIndex]?.tl}
+      </div>
+      <div className="narrator-en animate-fade" style={{ fontSize: '1.2rem', color: 'var(--accent)', fontStyle: 'italic', opacity: 0.8, letterSpacing: '1px' }}>
+        {sentences[currentIndex]?.en}
+      </div>
     </div>
   );
 };
@@ -158,7 +173,6 @@ export default function HostView() {
   };
 
   const handleProceed = () => {
-    window.speechSynthesis.cancel(); // Stop TTS immediately if host skips
     sfxPageTurn.play();
     socketRef.current?.emit('proceed');
   };
@@ -308,7 +322,7 @@ export default function HostView() {
               Historical Context
             </h2>
             <CinematicNarrator 
-              text={displayState.cutsceneText} 
+              sentences={displayState.cutsceneText} 
             />
             <button className="btn outline mt-4 animate-fade" onClick={handleProceed} style={{ animationDelay: '2s', padding: '0.8rem 2rem', opacity: 0.6, marginTop: '4rem' }}>
               Skip Sequence →
