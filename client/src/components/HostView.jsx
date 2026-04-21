@@ -323,6 +323,7 @@ export default function HostView() {
             </h2>
             <CinematicNarrator 
               sentences={displayState.cutsceneText} 
+              onComplete={handleProceed}
             />
             <button className="btn outline mt-4 animate-fade" onClick={handleProceed} style={{ animationDelay: '2s', padding: '0.8rem 2rem', opacity: 0.6, marginTop: '4rem' }}>
               Skip Sequence →
