@@ -1,34 +1,42 @@
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const ip = require('ip'); // Used to get local network IP
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const crypto = require('crypto');
+const { EdgeTTS } = require('node-edge-tts');
 const { storyData, gameIntroLore } = require('./storyData');
+
+// Initialize the ultra-realistic Azure Neural TTS Engine
+const edgeTts = new EdgeTTS({ voice: 'fil-PH-AngeloNeural' });
 
 const app = express();
 app.use(cors());
 
-// Free Google Translate TTS Proxy Route
+// Premium Edge Neural TTS Proxy Route
 app.get('/api/tts', async (req, res) => {
-  const { text, lang = 'tl' } = req.query;
+  const { text } = req.query;
   if (!text) return res.status(400).send('No text provided');
   
   try {
-    const googleTTSUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${lang}&client=tw-ob`;
-    const response = await fetch(googleTTSUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0'
-      }
-    });
+    const tempFile = path.join(os.tmpdir(), `tts_${crypto.randomUUID()}.mp3`);
     
-    if (!response.ok) throw new Error('Google TTS API Error');
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    // Generate ultra-realistic speech to Temp
+    await edgeTts.ttsPromise(text, tempFile);
     
+    // Read buffer and instantly cleanup
+    const buffer = fs.readFileSync(tempFile);
+    fs.unlinkSync(tempFile);
+    
+    // Stream back to game
     res.set('Content-Type', 'audio/mpeg');
     res.send(buffer);
   } catch (error) {
-    console.error('TTS Error:', error);
+    console.error('Edge TTS Error:', error);
     res.status(500).send('TTS Generation Failed');
   }
 });
