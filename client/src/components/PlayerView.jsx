@@ -1,12 +1,37 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { Howl } from 'howler';
-import { Pen, Scroll, Eye, ShieldCheck, Hourglass } from 'lucide-react';
+import { Pen, Scroll, Eye, ShieldCheck, Hourglass, Sword, Ship, Coins, Shield, Crosshair, Bomb, ShieldHalf, Coffee, Gem, ShoppingBasket, User, Cross, Bell, Map, CupSoda, Leaf, Wheat } from 'lucide-react';
 
 const sfxClick = new Howl({
   src: ['https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3'], // Working alternative click
   volume: 0.8
 });
+
+const getIcon = (word) => {
+  const map = {
+    "Sword": <Sword size={32} style={{ marginBottom: '8px' }} />,
+    "Ship": <Ship size={32} style={{ marginBottom: '8px' }} />,
+    "Scroll": <Scroll size={32} style={{ marginBottom: '8px' }} />,
+    "Coin": <Coins size={32} style={{ marginBottom: '8px' }} />,
+    "Shield": <Shield size={32} style={{ marginBottom: '8px' }} />,
+    "Spear": <Crosshair size={32} style={{ marginBottom: '8px' }} />,
+    "Cannon": <Bomb size={32} style={{ marginBottom: '8px' }} />,
+    "Armor": <ShieldHalf size={32} style={{ marginBottom: '8px' }} />,
+    "Clay Pot": <Coffee size={32} style={{ marginBottom: '8px' }} />,
+    "Gold Jewelry": <Gem size={32} style={{ marginBottom: '8px' }} />,
+    "Rattan Basket": <ShoppingBasket size={32} style={{ marginBottom: '8px' }} />,
+    "Wooden Idol": <User size={32} style={{ marginBottom: '8px' }} />,
+    "Cross": <Cross size={32} style={{ marginBottom: '8px' }} />,
+    "Bell": <Bell size={32} style={{ marginBottom: '8px' }} />,
+    "Map": <Map size={32} style={{ marginBottom: '8px' }} />,
+    "Porcelain Vase": <CupSoda size={32} style={{ marginBottom: '8px' }} />,
+    "Iron Sword": <Sword size={32} style={{ marginBottom: '8px' }} />,
+    "Spices": <Leaf size={32} style={{ marginBottom: '8px' }} />,
+    "Rice": <Wheat size={32} style={{ marginBottom: '8px' }} />
+  };
+  return map[word] || <Eye size={32} style={{ marginBottom: '8px' }} />;
+};
 
 export default function PlayerView() {
   const [name, setName] = useState('');
@@ -14,8 +39,10 @@ export default function PlayerView() {
   const [gameState, setGameState] = useState(null);
   const [hasVoted, setHasVoted] = useState(false);
   const [selectedOption, setSelectedOption] = useState(-1);
+  const [wrongAnswer, setWrongAnswer] = useState(false);
   const socketRef = useRef(null);
   const lastPhaseRef = useRef(-1);
+  const lastMinigamePhaseRef = useRef(-1);
 
   useEffect(() => {
     // Dynamic background
@@ -48,6 +75,19 @@ export default function PlayerView() {
         setHasVoted(false);
         setSelectedOption(-1);
       }
+      if (data.status === 'minigame' && data.currentPhaseIndex !== lastMinigamePhaseRef.current) {
+        setHasVoted(false);
+        setSelectedOption(-1);
+        setWrongAnswer(false);
+        lastMinigamePhaseRef.current = data.currentPhaseIndex;
+      }
+    });
+
+    socket.on('minigame_wrong_answer', () => {
+      setWrongAnswer(true);
+      setHasVoted(false);
+      setSelectedOption(-1);
+      setTimeout(() => setWrongAnswer(false), 1500);
     });
 
     return () => socket.disconnect();
@@ -168,6 +208,82 @@ export default function PlayerView() {
           </div>
           <h2>Behold the Script</h2>
           <p style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '1.2rem' }}>Look to the host screen to read the consequence...</p>
+        </div>
+      )}
+
+      {/* ===== CUTSCENE ===== */}
+      {status === 'cutscene' && (
+        <div className="glass-panel text-center" id="player-cutscene">
+          <div className="icon-container">
+            <Eye size={64} />
+          </div>
+          <h2>Observe the Lore</h2>
+          <p style={{ color: 'var(--text-muted)' }}>Look to the host screen for historical context.</p>
+        </div>
+      )}
+
+      {/* ===== MINIGAME ===== */}
+      {status === 'minigame' && gameState.currentMinigame && (
+        <div className="glass-panel text-center" id="player-minigame" style={{ padding: '1.5rem' }}>
+          <h2 style={{ color: 'var(--accent)', marginBottom: '0.5rem', letterSpacing: '2px' }}>RELIC DISCOVERY</h2>
+          <p style={{ marginBottom: '1rem', fontStyle: 'italic', color: '#f4e8d3', fontSize: '0.95rem' }}>
+            Identify the true relic to correct Morga's claim!
+          </p>
+
+          {/* Relic image — blurred until resolved */}
+          <div style={{ position: 'relative', width: '100%', height: '180px', borderRadius: '8px', overflow: 'hidden', border: '2px solid rgba(220,180,110,0.4)', marginBottom: '1rem' }}>
+            <img
+              src={gameState.currentMinigame.imagePath}
+              alt="relic"
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                opacity: gameState.minigameResolved ? 1 : 0.15,
+                filter: gameState.minigameResolved ? 'none' : 'grayscale(100%) blur(8px)',
+                transition: 'all 2.5s cubic-bezier(0.17, 0.67, 0.83, 0.67)'
+              }}
+            />
+            {!gameState.minigameResolved && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <p style={{ fontSize: '0.85rem', letterSpacing: '1px', opacity: 0.8 }}>Shrouded in history...</p>
+              </div>
+            )}
+          </div>
+
+          {wrongAnswer && (
+            <div className="animate-fade" style={{ background: 'rgba(180,40,40,0.7)', padding: '0.6rem 1rem', borderRadius: '6px', marginBottom: '0.75rem' }}>
+              <p style={{ color: '#ffcccc', fontWeight: 'bold', margin: 0 }}>Wrong relic — try again!</p>
+            </div>
+          )}
+
+          {!gameState.minigameResolved ? (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              {gameState.currentMinigame.options.map((opt, i) => (
+                <button
+                  key={i}
+                  className={`btn vote-btn ${selectedOption === i ? 'selected-vote' : ''}`}
+                  onClick={() => {
+                    if (hasVoted || gameState.minigameResolved) return;
+                    sfxClick.play();
+                    socketRef.current?.emit('submit_minigame_answer', { optionIndex: i });
+                    setHasVoted(true);
+                    setSelectedOption(i);
+                  }}
+                  disabled={hasVoted || gameState.minigameResolved}
+                  style={{ height: '100px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', padding: '0.75rem', border: '2px solid rgba(220,180,110,0.3)', borderRadius: '8px', wordBreak: 'break-word' }}
+                >
+                  {getIcon(opt)}
+                  <span>{opt}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="animate-fade" style={{ background: 'rgba(0,0,0,0.5)', padding: '1rem', borderRadius: '8px' }}>
+              <p style={{ color: '#8ce6af', fontWeight: 'bold', marginBottom: '0.25rem' }}>Relic Identified!</p>
+              <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Check the Host screen for the truth.</p>
+            </div>
+          )}
         </div>
       )}
 

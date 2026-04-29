@@ -1,0 +1,15 @@
+{
+  "name": "rlw-game",
+  "version": "1.0.0",
+  "description": "Rizal's Legacy: Woven — monorepo root",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev --prefix client\" \"npm run start --prefix server\"",
+    "dev:client": "npm run dev --prefix client",
+    "dev:server": "npm run start --prefix server",
+    "install:all": "npm install --prefix client && npm install --prefix server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

@@ -10,6 +10,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { EdgeTTS } = require('node-edge-tts');
 const { storyData, gameIntroLore } = require('./storyData');
+const minigameData = require('./minigameData');
 
 // Initialize the ultra-realistic Azure Neural TTS Engine
 const edgeTts = new EdgeTTS({ voice: 'fil-PH-AngeloNeural' });
@@ -54,8 +55,8 @@ const LOCAL_IP = ip.address(); // Get the local Wi-Fi IP address
 
 // === GAME STATE ===
 let gameState = {
-  status: 'waiting', // waiting | active | consequence | ending
-  players: [],       // list of player objects: { id, name }
+  status: 'waiting', // waiting | active | consequence | minigame | ending
+  players: [],       // list of player objects: { id, name, score }
   currentPhaseIndex: 0,
   votes: {},         // mapping of optionIndex -> voteCount
   votedPlayers: new Set(), // keep track of who has voted to prevent double voting
@@ -63,7 +64,9 @@ let gameState = {
   winningOptionIndex: -1,  // the option that won the vote
   wasCorrect: false,       // whether the winning vote was correct
   consequenceImagePath: '',// path to the specific consequence image
-  cutsceneText: ''         // text to show during a cutscene
+  cutsceneText: '',        // text to show during a cutscene
+  minigameResolved: false,
+  minigameWinnerName: null
 };
 
 /**
@@ -84,6 +87,9 @@ function buildBroadcastPayload() {
     winningOptionIndex: gameState.winningOptionIndex,
     wasCorrect: gameState.wasCorrect,
     consequenceImagePath: gameState.consequenceImagePath,
+    minigameResolved: gameState.minigameResolved,
+    minigameWinnerName: gameState.minigameWinnerName,
+    currentMinigame: minigameData[gameState.currentPhaseIndex] || null,
     currentPhase: phase ? {
       phase: phase.phase,
       scenario: phase.scenario,
@@ -120,7 +126,7 @@ io.on('connection', (socket) => {
     const existing = gameState.players.find(p => p.id === socket.id);
     if (existing) return;
 
-    gameState.players.push({ id: socket.id, name: playerName });
+    gameState.players.push({ id: socket.id, name: playerName, score: 0 });
     console.log(`${playerName} joined the game (${gameState.players.length} players)`);
 
     // Broadcast updated state to ALL clients
@@ -134,6 +140,9 @@ io.on('connection', (socket) => {
     gameState.status = 'cutscene';
     gameState.cutsceneText = gameIntroLore;
     gameState.currentPhaseIndex = 0;
+    gameState.minigameResolved = false;
+    gameState.minigameWinnerName = null;
+    gameState.players.forEach(p => p.score = 0);
     resetVotes();
 
     console.log('Game started! Showing intro cutscene.');
@@ -181,15 +190,9 @@ io.on('connection', (socket) => {
       gameState.consequenceImagePath = outcome.imagePath;
 
       if (isCorrect) {
-        // Correct: move to next phase or ending
-        if (gameState.currentPhaseIndex >= storyData.length - 1) {
-          gameState.status = 'ending';
-          console.log('Game finished! Correct answer on final phase.');
-        } else {
-          // Show consequence screen even for correct — it contains the "why" explanation
-          gameState.status = 'consequence';
-          console.log(`Correct! Showing explanation before advancing.`);
-        }
+        // Always show consequence (which leads to minigame) — ending is handled after the last minigame
+        gameState.status = 'consequence';
+        console.log(`Correct on phase ${gameState.currentPhaseIndex}! Showing explanation.`);
       } else {
         // Incorrect: show consequence
         gameState.status = 'consequence';
@@ -201,7 +204,27 @@ io.on('connection', (socket) => {
     io.emit('update_game_state', buildBroadcastPayload());
   });
 
-  // 4. proceed: Triggered by Host to advance past consequence screen or cutscene
+  // 4. submit_minigame_answer: Payload: { optionIndex }
+  socket.on('submit_minigame_answer', ({ optionIndex }) => {
+    if (gameState.status !== 'minigame' || gameState.minigameResolved) return;
+    
+    const currentMinigame = minigameData[gameState.currentPhaseIndex];
+    if (optionIndex === currentMinigame.correctOptionIndex) {
+      // Correct!
+      gameState.minigameResolved = true;
+      const player = gameState.players.find(p => p.id === socket.id);
+      if (player) {
+         player.score += 100;
+         gameState.minigameWinnerName = player.name;
+         console.log(`${player.name} won the minigame!`);
+      }
+      io.emit('update_game_state', buildBroadcastPayload());
+    } else {
+      socket.emit('minigame_wrong_answer');
+    }
+  });
+
+  // 5. proceed: Triggered by Host to advance past consequence screen, cutscene, or minigame
   socket.on('proceed', () => {
     if (gameState.status === 'cutscene') {
       // Finished cutscene, go to active voting phase
@@ -211,20 +234,28 @@ io.on('connection', (socket) => {
     }
     else if (gameState.status === 'consequence') {
       if (gameState.wasCorrect) {
-        // Was correct — advance to next phase or ending
-        if (gameState.currentPhaseIndex >= storyData.length - 1) {
-          gameState.status = 'ending';
-        } else {
-          gameState.currentPhaseIndex++;
-          gameState.status = 'cutscene';
-          gameState.cutsceneText = storyData[gameState.currentPhaseIndex].phaseIntroLore;
-        }
+        // Was correct — advance to Minigame instead of next phase
+        gameState.status = 'minigame';
+        gameState.minigameResolved = false;
+        gameState.minigameWinnerName = null;
       } else {
         // Was incorrect — replay the same phase
         gameState.status = 'active';
       }
       resetVotes();
       console.log(`Proceeding to status: ${gameState.status}`);
+      io.emit('update_game_state', buildBroadcastPayload());
+    }
+    else if (gameState.status === 'minigame') {
+      // Finished minigame — advance to next phase or ending
+      if (gameState.currentPhaseIndex >= storyData.length - 1) {
+        gameState.status = 'ending';
+      } else {
+        gameState.currentPhaseIndex++;
+        gameState.status = 'cutscene';
+        gameState.cutsceneText = storyData[gameState.currentPhaseIndex].phaseIntroLore;
+      }
+      console.log(`Proceeding from minigame to: ${gameState.status}`);
       io.emit('update_game_state', buildBroadcastPayload());
     }
   });

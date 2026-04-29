@@ -85,16 +85,72 @@ const CinematicNarrator = ({ sentences, onComplete }) => {
     };
   }, [sentences, currentIndex]);
 
-  if (!sentences || sentences.length === 0) return null;
+  if (!sentences || sentences.length === 0 || currentIndex >= sentences.length) return null;
 
   return (
-    <div className="narrator-text-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-      <div className="narrator-sentence active narrator-tl" style={{ fontSize: '2.4rem', fontWeight: 'bold', marginBottom: '2rem', lineHeight: '1.4' }}>
+    <div className="narrator-text-container" style={{ minHeight: '200px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+      <div key={currentIndex} className="narrator-sentence active narrator-tl" style={{ fontSize: '2.4rem', fontWeight: 'bold' }}>
         {sentences[currentIndex]?.tl}
       </div>
-      <div className="narrator-en animate-fade" style={{ fontSize: '1.2rem', color: 'var(--accent)', fontStyle: 'italic', opacity: 0.8, letterSpacing: '1px' }}>
+      <div key={`en-${currentIndex}`} className="narrator-sentence active narrator-en" style={{ fontSize: '1.2rem', fontStyle: 'italic', marginTop: '1rem', color: 'var(--accent)' }}>
         {sentences[currentIndex]?.en}
       </div>
+    </div>
+  );
+};
+
+const MinigameHostView = ({ minigame, onProceed, minigameResolved, winnerName }) => {
+  const audioRef = useRef(null);
+
+  useEffect(() => {
+    if (minigameResolved && minigame) {
+      sfxCorrect.play();
+      const serverUrl = `http://${window.location.hostname}:3000`;
+      const audio = new Audio(`${serverUrl}/api/tts?text=${encodeURIComponent(minigame.correctionText)}`);
+      audio.play().catch(e => console.error(e));
+      audioRef.current = audio;
+    }
+    return () => {
+      if (audioRef.current) audioRef.current.pause();
+    };
+  }, [minigameResolved, minigame]);
+
+  if (!minigame) return null;
+
+  return (
+    <div className="glass-panel text-center animate-fade" style={{ maxWidth: '1000px', backgroundColor: 'rgba(10, 8, 7, 0.95)', margin: '0 auto', marginTop: '2rem' }}>
+      <h2 style={{ color: 'var(--accent)', letterSpacing: '4px', textTransform: 'uppercase', marginBottom: '2rem' }}>
+        Relics of Truth
+      </h2>
+      <h3 style={{ fontStyle: 'italic', fontSize: '1.6rem', marginBottom: '2rem', color: '#f4e8d3' }}>
+        "{minigame.morgaClaim}"
+      </h3>
+      
+      <div style={{ position: 'relative', width: '100%', height: '450px', margin: '0 auto', overflow: 'hidden', borderRadius: '8px', border: '2px solid var(--accent)' }}>
+        <img 
+          src={minigame.imagePath} 
+          style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: minigameResolved ? 1 : 0.03, filter: minigameResolved ? 'none' : 'grayscale(100%) blur(15px)', transition: 'all 2.5s cubic-bezier(0.17, 0.67, 0.83, 0.67)' }} 
+        />
+        {!minigameResolved && (
+          <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '100%', textAlign: 'center' }}>
+            <p style={{ animation: 'pulse 1.5s infinite', fontSize: '1.4rem', letterSpacing: '2px' }}>Awaiting Scholars to Uncover the Truth...</p>
+          </div>
+        )}
+        {minigameResolved && (
+          <div style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', background: 'rgba(0,0,0,0.85)', padding: '1.5rem', animation: 'fadeInSentence 2s forwards' }}>
+            <p style={{ color: '#8ce6af', fontSize: '1.4rem', fontWeight: 'bold' }}>{minigame.correctionText}</p>
+          </div>
+        )}
+      </div>
+
+      {minigameResolved && (
+        <div style={{ marginTop: '2rem', animation: 'fadeInSentence 1s forwards' }}>
+          <p style={{ fontSize: '1.2rem', color: 'var(--accent)' }}>Discovered by: <strong>{winnerName}</strong> (+100 Wisdom)</p>
+          <button className="btn btn-primary mt-4" onClick={onProceed}>
+            Continue Narrative →
+          </button>
+        </div>
+      )}
     </div>
   );
 };
@@ -128,19 +184,7 @@ export default function HostView() {
 
     socket.on('init_data', (data) => {
       setGameUrl(data.gameUrl);
-      setGameState({
-        status: data.status,
-        players: data.players,
-        currentPhaseIndex: data.currentPhaseIndex,
-        totalPhases: data.totalPhases,
-        votes: data.votes,
-        votedCount: data.votedCount,
-        consequenceText: data.consequenceText,
-        consequenceImagePath: data.consequenceImagePath,
-        winningOptionIndex: data.winningOptionIndex,
-        wasCorrect: data.wasCorrect,
-        currentPhase: data.currentPhase
-      });
+      setGameState(data);
     });
 
     socket.on('update_game_state', (data) => {
@@ -402,6 +446,16 @@ export default function HostView() {
                 : 'Revise the Annals →'}
             </button>
           </div>
+        )}
+
+        {/* ========== MINIGAME / RELIC ========== */}
+        {status === 'minigame' && (
+          <MinigameHostView 
+            minigame={displayState.currentMinigame}
+            minigameResolved={displayState.minigameResolved}
+            winnerName={displayState.minigameWinnerName}
+            onProceed={handleProceed}
+          />
         )}
 
         {/* ========== ENDING ========== */}
