@@ -160,6 +160,8 @@ export default function HostView({ hostToken }) {
   const [gameUrl, setGameUrl] = useState('');
   const [displayBg, setDisplayBg] = useState('/historical_manuscript_bg.png');
   const [fade, setFade] = useState(false);
+  const [confirmStop, setConfirmStop] = useState(false);
+  const confirmTimerRef = useRef(null);
   const socketRef = useRef(null);
 
   useEffect(() => {
@@ -217,6 +219,22 @@ export default function HostView({ hostToken }) {
   const handleProceed = () => {
     sfxPageTurn.play();
     socketRef.current?.emit('proceed');
+  };
+
+  const handleStopRequest = () => {
+    setConfirmStop(true);
+    confirmTimerRef.current = setTimeout(() => setConfirmStop(false), 4000);
+  };
+
+  const handleStopConfirm = () => {
+    clearTimeout(confirmTimerRef.current);
+    setConfirmStop(false);
+    socketRef.current?.emit('stop_game');
+  };
+
+  const handleStopCancel = () => {
+    clearTimeout(confirmTimerRef.current);
+    setConfirmStop(false);
   };
 
   // Dynamic Background Logic BEFORE early return
@@ -296,6 +314,23 @@ export default function HostView({ hostToken }) {
       <div className={`theater-door door-left ${fade ? 'closed' : ''}`} />
       <div className={`theater-door door-right ${fade ? 'closed' : ''}`} />
       
+      {/* End Session button — fixed top-right, visible during any active game state */}
+      {status !== 'waiting' && (
+        <div style={{ position: 'fixed', top: '1rem', right: '1.25rem', zIndex: 1000, display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          {confirmStop ? (
+            <>
+              <span style={{ fontSize: '0.85rem', color: '#fca5a5' }}>End session?</span>
+              <button onClick={handleStopConfirm} style={{ padding: '0.35rem 0.75rem', background: 'rgba(180,40,40,0.85)', border: '1px solid #f87171', borderRadius: '6px', color: '#fff', cursor: 'pointer', fontSize: '0.85rem' }}>Yes</button>
+              <button onClick={handleStopCancel} style={{ padding: '0.35rem 0.75rem', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: '#fff', cursor: 'pointer', fontSize: '0.85rem' }}>Cancel</button>
+            </>
+          ) : (
+            <button onClick={handleStopRequest} style={{ padding: '0.35rem 0.9rem', background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(220,180,80,0.35)', borderRadius: '6px', color: 'rgba(220,180,80,0.8)', cursor: 'pointer', fontSize: '0.8rem', letterSpacing: '1px' }}>
+              End Session
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Hide the UI panel completely when the door is closed so it doesn't leak the next state early */}
       <div className="container animate-fade" style={{ opacity: fade ? 0 : 1, transition: 'opacity 0.2s', pointerEvents: fade ? 'none' : 'auto' }}>
         {/* ========== WAITING / LOBBY ========== */}

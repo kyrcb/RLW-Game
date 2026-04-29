@@ -170,6 +170,21 @@ io.on('connection', (socket) => {
     io.emit('update_game_state', buildBroadcastPayload());
   });
 
+  // stop_game: host only — returns to lobby, keeps players
+  socket.on('stop_game', () => {
+    if (!socket.isHost) return;
+    gameState.status = 'waiting';
+    gameState.currentPhaseIndex = 0;
+    gameState.minigameResolved = false;
+    gameState.minigameWinnerName = null;
+    gameState.relicWinners = [];
+    gameState.cutsceneText = '';
+    gameState.players.forEach(p => p.score = 0);
+    resetVotes();
+    console.log('Host stopped the game. Returning to lobby.');
+    io.emit('update_game_state', buildBroadcastPayload());
+  });
+
   // 2. start_game: host only
   socket.on('start_game', () => {
     if (!socket.isHost) return;
