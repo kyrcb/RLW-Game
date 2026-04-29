@@ -3,6 +3,7 @@ import { io } from 'socket.io-client';
 import { QRCodeSVG } from 'qrcode.react';
 import { Howl } from 'howler';
 import { Landmark, Users, BookOpen, ScrollText, CheckCircle, XCircle } from 'lucide-react';
+import serverUrl from '../utils/serverUrl';
 
 const bgMusic = new Howl({
   src: ['/bgMusic.ogg'], // User-provided local background music
@@ -49,7 +50,6 @@ const CinematicNarrator = ({ sentences, onComplete }) => {
     }
 
     const textToSpeak = sentences[index].tl;
-    const serverUrl = `http://${window.location.hostname}:3000`;
     const audio = new Audio(`${serverUrl}/api/tts?text=${encodeURIComponent(textToSpeak)}&lang=tl`);
     audioRef.current = audio;
     
@@ -105,7 +105,6 @@ const MinigameHostView = ({ minigame, onProceed, minigameResolved, winnerName })
   useEffect(() => {
     if (minigameResolved && minigame) {
       sfxCorrect.play();
-      const serverUrl = `http://${window.location.hostname}:3000`;
       const audio = new Audio(`${serverUrl}/api/tts?text=${encodeURIComponent(minigame.correctionText)}`);
       audio.play().catch(e => console.error(e));
       audioRef.current = audio;
@@ -155,7 +154,7 @@ const MinigameHostView = ({ minigame, onProceed, minigameResolved, winnerName })
   );
 };
 
-export default function HostView() {
+export default function HostView({ hostToken }) {
   const [gameState, setGameState] = useState(null);
   const [displayState, setDisplayState] = useState(null); // Used to buffer UI so it doesn't leak ahead of transitions
   const [gameUrl, setGameUrl] = useState('');
@@ -178,8 +177,7 @@ export default function HostView() {
     window.addEventListener('keydown', attemptPlayMusic);
     attemptPlayMusic(); // Autoplay attempt (might be blocked by browser until interacted)
 
-    const serverUrl = `http://${window.location.hostname}:3000`;
-    const socket = io(serverUrl);
+    const socket = io(serverUrl, { auth: { token: hostToken } });
     socketRef.current = socket;
 
     socket.on('init_data', (data) => {

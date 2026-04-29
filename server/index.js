@@ -3,7 +3,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
-const ip = require('ip'); // Used to get local network IP
+const ip = require('ip');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -12,28 +12,60 @@ const { EdgeTTS } = require('node-edge-tts');
 const { storyData, gameIntroLore, gameOutroLore } = require('./storyData');
 const minigameData = require('./minigameData');
 
-// Initialize the ultra-realistic Azure Neural TTS Engine
+// === ENVIRONMENT ===
+const PORT       = process.env.PORT       || 3000;
+const CLIENT_URL = process.env.CLIENT_URL || '*';
+const GAME_URL   = process.env.GAME_URL   || `http://${ip.address()}:5173`;
+
+function generateCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // omit ambiguous 0/O, 1/I
+  return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+}
+const HOST_CODE = (process.env.HOST_CODE || generateCode()).toUpperCase();
+
+// In-memory set of valid host session tokens (UUID strings).
+// Cleared on server restart — host simply re-enters the code shown in the console.
+const validHostTokens = new Set();
+
+// Initialize TTS engine
 const edgeTts = new EdgeTTS({ voice: 'fil-PH-AngeloNeural' });
 
 const app = express();
-app.use(cors());
+app.use(cors({ origin: CLIENT_URL }));
+app.use(express.json());
 
-// Premium Edge Neural TTS Proxy Route
+// === HOST AUTH ROUTES ===
+
+// POST /api/host-auth — validate code, return session token
+app.post('/api/host-auth', (req, res) => {
+  const submitted = (req.body.code || '').toUpperCase().trim();
+  if (submitted !== HOST_CODE) {
+    return res.status(401).json({ error: 'Invalid host code.' });
+  }
+  const token = crypto.randomUUID();
+  validHostTokens.add(token);
+  res.json({ token });
+});
+
+// GET /api/validate-token — check if an existing token is still valid
+app.get('/api/validate-token', (req, res) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
+  if (token && validHostTokens.has(token)) {
+    return res.json({ valid: true });
+  }
+  res.status(401).json({ valid: false });
+});
+
+// === TTS ROUTE ===
 app.get('/api/tts', async (req, res) => {
   const { text } = req.query;
   if (!text) return res.status(400).send('No text provided');
-  
+
   try {
     const tempFile = path.join(os.tmpdir(), `tts_${crypto.randomUUID()}.mp3`);
-    
-    // Generate ultra-realistic speech to Temp
     await edgeTts.ttsPromise(text, tempFile);
-    
-    // Read buffer and instantly cleanup
     const buffer = fs.readFileSync(tempFile);
     fs.unlinkSync(tempFile);
-    
-    // Stream back to game
     res.set('Content-Type', 'audio/mpeg');
     res.send(buffer);
   } catch (error) {
@@ -42,38 +74,41 @@ app.get('/api/tts', async (req, res) => {
   }
 });
 
+// === STATIC FRONTEND (production: Express serves the built React app) ===
+const clientDist = path.join(__dirname, '../client/dist');
+if (fs.existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+  // Let React Router handle all non-API routes
+  app.get('/{*path}', (_req, res) => {
+    res.sendFile(path.join(clientDist, 'index.html'));
+  });
+}
+
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*", // allow all origins for local dev
-    methods: ["GET", "POST"]
+    origin: CLIENT_URL,
+    methods: ['GET', 'POST']
   }
 });
 
-const PORT = 3000;
-const LOCAL_IP = ip.address(); // Get the local Wi-Fi IP address
-
 // === GAME STATE ===
 let gameState = {
-  status: 'waiting', // waiting | active | consequence | minigame | ending
-  players: [],       // list of player objects: { id, name, score }
+  status: 'waiting', // waiting | cutscene | active | consequence | minigame | outro | ending
+  players: [],
   currentPhaseIndex: 0,
-  votes: {},         // mapping of optionIndex -> voteCount
-  votedPlayers: new Set(), // keep track of who has voted to prevent double voting
-  consequenceText: '',     // text to show when answer is incorrect
-  winningOptionIndex: -1,  // the option that won the vote
-  wasCorrect: false,       // whether the winning vote was correct
-  consequenceImagePath: '',// path to the specific consequence image
-  cutsceneText: '',        // text to show during a cutscene
+  votes: {},
+  votedPlayers: new Set(),
+  consequenceText: '',
+  winningOptionIndex: -1,
+  wasCorrect: false,
+  consequenceImagePath: '',
+  cutsceneText: '',
   minigameResolved: false,
   minigameWinnerName: null,
-  relicWinners: []   // [{ topic, imagePath, winnerName }] — accumulated across all minigames
+  relicWinners: []
 };
 
-/**
- * Build the payload to broadcast to all clients.
- * Includes current phase data from storyData so clients don't need the data themselves.
- */
 function buildBroadcastPayload() {
   const phase = storyData[gameState.currentPhaseIndex] || null;
   return {
@@ -101,9 +136,6 @@ function buildBroadcastPayload() {
   };
 }
 
-/**
- * Reset votes for a new round.
- */
 function resetVotes() {
   gameState.votes = {};
   gameState.votedPlayers = new Set();
@@ -113,31 +145,35 @@ function resetVotes() {
   gameState.consequenceImagePath = '';
 }
 
-io.on('connection', (socket) => {
-  console.log('A user connected:', socket.id);
+// === SOCKET.IO MIDDLEWARE — mark authenticated host sockets ===
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  socket.isHost = !!(token && validHostTokens.has(token));
+  next(); // always allow connection; isHost flag controls game-control capabilities
+});
 
-  // Send initial data to newly connected client
+io.on('connection', (socket) => {
+  console.log(`${socket.isHost ? '[HOST]' : '[CLIENT]'} connected: ${socket.id}`);
+
   socket.emit('init_data', {
-    gameUrl: `http://${LOCAL_IP}:5173`,
+    gameUrl: GAME_URL,
     ...buildBroadcastPayload()
   });
 
   // 1. join_game: payload: { playerName }
   socket.on('join_game', ({ playerName }) => {
-    // Prevent duplicate joins
     const existing = gameState.players.find(p => p.id === socket.id);
     if (existing) return;
 
     gameState.players.push({ id: socket.id, name: playerName, score: 0 });
     console.log(`${playerName} joined the game (${gameState.players.length} players)`);
-
-    // Broadcast updated state to ALL clients
     io.emit('update_game_state', buildBroadcastPayload());
   });
 
-  // 2. start_game: no payload
+  // 2. start_game: host only
   socket.on('start_game', () => {
-    if (gameState.players.length === 0) return; // Need at least 1 player
+    if (!socket.isHost) return;
+    if (gameState.players.length === 0) return;
 
     gameState.status = 'cutscene';
     gameState.cutsceneText = gameIntroLore;
@@ -154,25 +190,16 @@ io.on('connection', (socket) => {
 
   // 3. submit_vote: payload: { optionIndex }
   socket.on('submit_vote', ({ optionIndex }) => {
-    // Only allow votes during active state
     if (gameState.status !== 'active') return;
-
-    // Prevent double voting
     if (gameState.votedPlayers.has(socket.id)) return;
-
-    // Only allow votes from actual players
     const isPlayer = gameState.players.some(p => p.id === socket.id);
     if (!isPlayer) return;
 
-    // Record the vote
     gameState.votes[optionIndex] = (gameState.votes[optionIndex] || 0) + 1;
     gameState.votedPlayers.add(socket.id);
-
     console.log(`Vote received from ${socket.id}: option ${optionIndex} (${gameState.votedPlayers.size}/${gameState.players.length})`);
 
-    // Check if all players have voted
     if (gameState.votedPlayers.size >= gameState.players.length) {
-      // Calculate winning option (highest vote count)
       let maxVotes = 0;
       let winningOption = 0;
       for (const [optIdx, count] of Object.entries(gameState.votes)) {
@@ -183,37 +210,28 @@ io.on('connection', (socket) => {
       }
 
       gameState.winningOptionIndex = winningOption;
-
       const currentPhase = storyData[gameState.currentPhaseIndex];
       const isCorrect = winningOption === currentPhase.correctOptionIndex;
       gameState.wasCorrect = isCorrect;
-      
+
       const outcome = currentPhase.consequences[winningOption];
       gameState.consequenceText = outcome.text;
       gameState.consequenceImagePath = outcome.imagePath;
 
-      if (isCorrect) {
-        // Always show consequence (which leads to minigame) — ending is handled after the last minigame
-        gameState.status = 'consequence';
-        console.log(`Correct on phase ${gameState.currentPhaseIndex}! Showing explanation.`);
-      } else {
-        // Incorrect: show consequence
-        gameState.status = 'consequence';
-        console.log(`Incorrect. Showing consequence for phase ${currentPhase.phase}`);
-      }
+      // Always show consequence first (leads to minigame on correct; retry on incorrect)
+      gameState.status = 'consequence';
+      console.log(`${isCorrect ? 'Correct' : 'Incorrect'} on phase ${gameState.currentPhaseIndex}. Showing consequence.`);
     }
 
-    // Broadcast updated state (vote counts update in real-time)
     io.emit('update_game_state', buildBroadcastPayload());
   });
 
-  // 4. submit_minigame_answer: Payload: { optionIndex }
+  // 4. submit_minigame_answer: payload: { optionIndex }
   socket.on('submit_minigame_answer', ({ optionIndex }) => {
     if (gameState.status !== 'minigame' || gameState.minigameResolved) return;
-    
+
     const currentMinigame = minigameData[gameState.currentPhaseIndex];
     if (optionIndex === currentMinigame.correctOptionIndex) {
-      // Correct!
       gameState.minigameResolved = true;
       const player = gameState.players.find(p => p.id === socket.id);
       if (player) {
@@ -232,30 +250,26 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 5. proceed: Triggered by Host to advance past consequence screen, cutscene, or minigame
+  // 5. proceed: host only
   socket.on('proceed', () => {
+    if (!socket.isHost) return;
+
     if (gameState.status === 'cutscene') {
-      // Finished cutscene, go to active voting phase
       gameState.status = 'active';
       console.log(`Proceeding to active phase ${gameState.currentPhaseIndex}`);
-      io.emit('update_game_state', buildBroadcastPayload());
     }
     else if (gameState.status === 'consequence') {
       if (gameState.wasCorrect) {
-        // Was correct — advance to Minigame instead of next phase
         gameState.status = 'minigame';
         gameState.minigameResolved = false;
         gameState.minigameWinnerName = null;
       } else {
-        // Was incorrect — replay the same phase
         gameState.status = 'active';
       }
       resetVotes();
       console.log(`Proceeding to status: ${gameState.status}`);
-      io.emit('update_game_state', buildBroadcastPayload());
     }
     else if (gameState.status === 'minigame') {
-      // Finished minigame — advance to next phase, or play the outro before ending
       if (gameState.currentPhaseIndex >= storyData.length - 1) {
         gameState.status = 'outro';
         gameState.cutsceneText = gameOutroLore;
@@ -265,16 +279,15 @@ io.on('connection', (socket) => {
         gameState.cutsceneText = storyData[gameState.currentPhaseIndex].phaseIntroLore;
       }
       console.log(`Proceeding from minigame to: ${gameState.status}`);
-      io.emit('update_game_state', buildBroadcastPayload());
     }
     else if (gameState.status === 'outro') {
       gameState.status = 'ending';
       console.log('Outro complete — showing final screen.');
-      io.emit('update_game_state', buildBroadcastPayload());
     }
+
+    io.emit('update_game_state', buildBroadcastPayload());
   });
 
-  // Handle disconnection
   socket.on('disconnect', () => {
     const player = gameState.players.find(p => p.id === socket.id);
     if (player) {
@@ -289,8 +302,14 @@ io.on('connection', (socket) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`\n🏛️  Rizal's Annotation Game — Server`);
-  console.log(`   Server listening on port ${PORT}`);
-  console.log(`   Game URL: http://${LOCAL_IP}:5173`);
-  console.log(`   Players join at: http://${LOCAL_IP}:5173/join\n`);
+  console.log('\n============================================');
+  console.log("  Rizal's Legacy: Woven — Server");
+  console.log('============================================');
+  console.log(`  Port     : ${PORT}`);
+  console.log(`  Game URL : ${GAME_URL}`);
+  console.log(`  Join URL : ${GAME_URL}/join`);
+  console.log('--------------------------------------------');
+  console.log(`  HOST CODE  :  ${HOST_CODE}`);
+  console.log('  (Share with the game conductor only)');
+  console.log('============================================\n');
 });

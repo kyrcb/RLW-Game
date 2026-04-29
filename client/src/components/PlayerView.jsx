@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import serverUrl from '../utils/serverUrl';
 import { io } from 'socket.io-client';
 import { Howl } from 'howler';
 import { Pen, Scroll, ScrollText, Eye, ShieldCheck, Hourglass, Sword, Ship, Coins, Shield, Crosshair, Bomb, ShieldHalf, Coffee, Gem, ShoppingBasket, User, Cross, Bell, Map, CupSoda, Leaf, Wheat } from 'lucide-react';
@@ -48,7 +49,6 @@ export default function PlayerView() {
     // Dynamic background
     document.body.className = 'bg-manuscript';
 
-    const serverUrl = `http://${window.location.hostname}:3000`;
     const socket = io(serverUrl);
     socketRef.current = socket;
 
