@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { Howl } from 'howler';
-import { Pen, Scroll, Eye, ShieldCheck, Hourglass, Sword, Ship, Coins, Shield, Crosshair, Bomb, ShieldHalf, Coffee, Gem, ShoppingBasket, User, Cross, Bell, Map, CupSoda, Leaf, Wheat } from 'lucide-react';
+import { Pen, Scroll, ScrollText, Eye, ShieldCheck, Hourglass, Sword, Ship, Coins, Shield, Crosshair, Bomb, ShieldHalf, Coffee, Gem, ShoppingBasket, User, Cross, Bell, Map, CupSoda, Leaf, Wheat } from 'lucide-react';
 
 const sfxClick = new Howl({
   src: ['https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3'], // Working alternative click
@@ -222,6 +222,17 @@ export default function PlayerView() {
         </div>
       )}
 
+      {/* ===== OUTRO ===== */}
+      {status === 'outro' && (
+        <div className="glass-panel text-center" id="player-outro">
+          <div className="icon-container">
+            <ScrollText size={64} />
+          </div>
+          <h2>The Legacy Speaks</h2>
+          <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Witness the closing words on the host screen...</p>
+        </div>
+      )}
+
       {/* ===== MINIGAME ===== */}
       {status === 'minigame' && gameState.currentMinigame && (
         <div className="glass-panel text-center" id="player-minigame" style={{ padding: '1.5rem' }}>
@@ -288,15 +299,40 @@ export default function PlayerView() {
       )}
 
       {/* ===== ENDING ===== */}
-      {status === 'ending' && (
-        <div className="glass-panel text-center" id="player-ending">
-          <div className="icon-container">
-            <ShieldCheck size={64} />
+      {status === 'ending' && (() => {
+        const sorted = [...(gameState.players || [])].sort((a, b) => b.score - a.score);
+        const rank = sorted.findIndex(p => p.name === name) + 1;
+        const myScore = sorted.find(p => p.name === name)?.score ?? 0;
+        const medals = ['🥇', '🥈', '🥉'];
+        return (
+          <div className="glass-panel text-center" id="player-ending">
+            <div className="icon-container">
+              <ShieldCheck size={64} />
+            </div>
+            <h2>History Written!</h2>
+            <p style={{ fontSize: '1.1rem', fontStyle: 'italic', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
+              Scholar {name}, you have illuminated the path.
+            </p>
+
+            <div style={{ background: 'rgba(220,180,80,0.1)', border: '1px solid rgba(220,180,80,0.3)', borderRadius: '10px', padding: '1rem 1.5rem', marginBottom: '1.5rem' }}>
+              <p style={{ margin: 0, fontSize: '2rem' }}>{medals[rank - 1] || `#${rank}`}</p>
+              <p style={{ margin: '0.25rem 0 0', fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--accent)' }}>{myScore} pts</p>
+              <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Rank {rank} of {sorted.length}</p>
+            </div>
+
+            <div style={{ textAlign: 'left' }}>
+              <p style={{ fontSize: '0.8rem', letterSpacing: '2px', textTransform: 'uppercase', color: 'var(--accent)', marginBottom: '0.5rem' }}>Final Standings</p>
+              {sorted.map((p, i) => (
+                <div key={p.id ?? i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.5rem', borderRadius: '6px', background: p.name === name ? 'rgba(220,180,80,0.12)' : 'transparent', marginBottom: '0.25rem' }}>
+                  <span style={{ minWidth: '1.8rem' }}>{medals[i] || `${i + 1}.`}</span>
+                  <span style={{ flex: 1, fontWeight: p.name === name ? 'bold' : 'normal' }}>{p.name}</span>
+                  <span style={{ color: 'var(--accent)', fontWeight: 'bold' }}>{p.score} pts</span>
+                </div>
+              ))}
+            </div>
           </div>
-          <h2>History Written!</h2>
-          <p style={{ fontSize: '1.25rem' }}>Master {name}, you have honorably guided the path of enlightenment.</p>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

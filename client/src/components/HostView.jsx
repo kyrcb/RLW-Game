@@ -292,7 +292,7 @@ export default function HostView() {
         className="cinematic-bg" 
         style={{ backgroundImage: `url(${displayBg})` }} 
       />
-      <div className={`cinematic-overlay ${status === 'cutscene' ? 'dark-mode' : ''}`} />
+      <div className={`cinematic-overlay ${(status === 'cutscene' || status === 'outro') ? 'dark-mode' : ''}`} />
       
       {/* Dramatic Doors Transition */}
       <div className={`theater-door door-left ${fade ? 'closed' : ''}`} />
@@ -448,6 +448,22 @@ export default function HostView() {
           </div>
         )}
 
+        {/* ========== OUTRO / CLOSING NARRATIVE ========== */}
+        {status === 'outro' && (
+          <div className="text-center" id="outro-panel" style={{ maxWidth: '900px', margin: '0 auto', paddingTop: '10vh' }}>
+            <h2 style={{ fontSize: '1.2rem', marginBottom: '3rem', letterSpacing: '8px', textTransform: 'uppercase', color: 'var(--accent)', opacity: 0.8 }}>
+              The Legacy of Truth
+            </h2>
+            <CinematicNarrator
+              sentences={displayState.cutsceneText}
+              onComplete={handleProceed}
+            />
+            <button className="btn outline mt-4 animate-fade" onClick={handleProceed} style={{ animationDelay: '2s', padding: '0.8rem 2rem', opacity: 0.6, marginTop: '4rem' }}>
+              Behold the Legacy →
+            </button>
+          </div>
+        )}
+
         {/* ========== MINIGAME / RELIC ========== */}
         {status === 'minigame' && (
           <MinigameHostView 
@@ -459,33 +475,67 @@ export default function HostView() {
         )}
 
         {/* ========== ENDING ========== */}
-        {status === 'ending' && (
-          <div className="glass-panel ending-panel" id="ending-panel">
-            <div className="icon-container">
-              <Landmark size={80} />
-            </div>
-            <h1>Legacy Forged</h1>
-            <h2 style={{ color: '#8ce6af', marginBottom: '1.5rem' }}>The Work Endures</h2>
-            <p className="ending-text">
-              You have successfully traced Jose Rizal's historic path in annotating Antonio de Morga's
-              <em> Sucesos de las Islas Filipinas</em>. Through your decisions, you experienced the
-              complexities of illuminating a suppressed history.
-            </p>
-            <p className="ending-text">
-              Rizal maintained that to fairly judge the present, a nation must first understand its past.
-              His annotation proved to be a revolutionary act of scholarship, cementing the first Philippine history 
-              written from the standpoint of a Filipino.
-            </p>
-            <div className="ending-players">
-              <h3>Honored Scholars of the Realm</h3>
-              <div className="player-badges">
-                {players.map((p) => (
-                  <span key={p.id} className="badge player-badge">{p.name}</span>
-                ))}
+        {status === 'ending' && (() => {
+          const sorted = [...players].sort((a, b) => b.score - a.score);
+          const medals = ['🥇', '🥈', '🥉'];
+          return (
+            <div className="glass-panel ending-panel animate-fade" id="ending-panel" style={{ maxWidth: '1100px', margin: '0 auto', overflowY: 'auto', maxHeight: '90vh' }}>
+              <div className="icon-container">
+                <Landmark size={64} />
+              </div>
+              <h1 style={{ marginBottom: '0.25rem' }}>Legacy Forged</h1>
+              <h2 style={{ color: '#8ce6af', marginBottom: '2rem', fontSize: '1.2rem', fontWeight: 'normal' }}>
+                The Work of Rizal Endures Through You
+              </h2>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', alignItems: 'start' }}>
+
+                {/* — Leaderboard — */}
+                <div>
+                  <h3 style={{ color: 'var(--accent)', letterSpacing: '3px', textTransform: 'uppercase', marginBottom: '1rem', fontSize: '1rem' }}>
+                    Scholar Rankings
+                  </h3>
+                  {sorted.length === 0 ? (
+                    <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No scholars recorded.</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      {sorted.map((p, i) => (
+                        <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: i === 0 ? 'rgba(220,180,80,0.15)' : 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '0.65rem 1rem', border: i === 0 ? '1px solid rgba(220,180,80,0.4)' : '1px solid rgba(255,255,255,0.07)' }}>
+                          <span style={{ fontSize: '1.5rem', minWidth: '2rem' }}>{medals[i] || `#${i + 1}`}</span>
+                          <span style={{ flex: 1, fontWeight: i < 3 ? 'bold' : 'normal', fontSize: '1.1rem' }}>{p.name}</span>
+                          <span style={{ color: 'var(--accent)', fontWeight: 'bold', fontSize: '1.1rem' }}>{p.score} <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>pts</span></span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* — Relic Finders — */}
+                <div>
+                  <h3 style={{ color: 'var(--accent)', letterSpacing: '3px', textTransform: 'uppercase', marginBottom: '1rem', fontSize: '1rem' }}>
+                    Relics Uncovered
+                  </h3>
+                  {displayState.relicWinners && displayState.relicWinners.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      {displayState.relicWinners.map((rw, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '0.5rem 0.75rem', border: '1px solid rgba(255,255,255,0.07)' }}>
+                          <img src={rw.imagePath} alt={rw.topic} style={{ width: '52px', height: '52px', objectFit: 'cover', borderRadius: '6px', border: '1px solid rgba(220,180,80,0.3)', flexShrink: 0 }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ margin: 0, fontWeight: 'bold', fontSize: '0.9rem', color: '#f4e8d3' }}>{rw.topic}</p>
+                            <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--accent)' }}>Uncovered by <strong>{rw.winnerName}</strong></p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No relics were uncovered.</p>
+                  )}
+                </div>
+
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
     </>
   );

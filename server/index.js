@@ -9,7 +9,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { EdgeTTS } = require('node-edge-tts');
-const { storyData, gameIntroLore } = require('./storyData');
+const { storyData, gameIntroLore, gameOutroLore } = require('./storyData');
 const minigameData = require('./minigameData');
 
 // Initialize the ultra-realistic Azure Neural TTS Engine
@@ -66,7 +66,8 @@ let gameState = {
   consequenceImagePath: '',// path to the specific consequence image
   cutsceneText: '',        // text to show during a cutscene
   minigameResolved: false,
-  minigameWinnerName: null
+  minigameWinnerName: null,
+  relicWinners: []   // [{ topic, imagePath, winnerName }] — accumulated across all minigames
 };
 
 /**
@@ -89,6 +90,7 @@ function buildBroadcastPayload() {
     consequenceImagePath: gameState.consequenceImagePath,
     minigameResolved: gameState.minigameResolved,
     minigameWinnerName: gameState.minigameWinnerName,
+    relicWinners: gameState.relicWinners,
     currentMinigame: minigameData[gameState.currentPhaseIndex] || null,
     currentPhase: phase ? {
       phase: phase.phase,
@@ -142,6 +144,7 @@ io.on('connection', (socket) => {
     gameState.currentPhaseIndex = 0;
     gameState.minigameResolved = false;
     gameState.minigameWinnerName = null;
+    gameState.relicWinners = [];
     gameState.players.forEach(p => p.score = 0);
     resetVotes();
 
@@ -214,10 +217,15 @@ io.on('connection', (socket) => {
       gameState.minigameResolved = true;
       const player = gameState.players.find(p => p.id === socket.id);
       if (player) {
-         player.score += 100;
-         gameState.minigameWinnerName = player.name;
-         console.log(`${player.name} won the minigame!`);
+        player.score += 100;
+        gameState.minigameWinnerName = player.name;
+        console.log(`${player.name} won the minigame!`);
       }
+      gameState.relicWinners.push({
+        topic: currentMinigame.topic,
+        imagePath: currentMinigame.imagePath,
+        winnerName: player ? player.name : 'Unknown'
+      });
       io.emit('update_game_state', buildBroadcastPayload());
     } else {
       socket.emit('minigame_wrong_answer');
@@ -247,15 +255,21 @@ io.on('connection', (socket) => {
       io.emit('update_game_state', buildBroadcastPayload());
     }
     else if (gameState.status === 'minigame') {
-      // Finished minigame — advance to next phase or ending
+      // Finished minigame — advance to next phase, or play the outro before ending
       if (gameState.currentPhaseIndex >= storyData.length - 1) {
-        gameState.status = 'ending';
+        gameState.status = 'outro';
+        gameState.cutsceneText = gameOutroLore;
       } else {
         gameState.currentPhaseIndex++;
         gameState.status = 'cutscene';
         gameState.cutsceneText = storyData[gameState.currentPhaseIndex].phaseIntroLore;
       }
       console.log(`Proceeding from minigame to: ${gameState.status}`);
+      io.emit('update_game_state', buildBroadcastPayload());
+    }
+    else if (gameState.status === 'outro') {
+      gameState.status = 'ending';
+      console.log('Outro complete — showing final screen.');
       io.emit('update_game_state', buildBroadcastPayload());
     }
   });

@@ -164,4 +164,13 @@ const gameIntroLore = [
   { tl: "Isang dakilang adhikain ang nasa iyong harapan.", en: "A grand endeavor lies before you..." }
 ];
 
-module.exports = { storyData, gameIntroLore };
+const gameOutroLore = [
+  { tl: "Ang gawain ay tapos na.", en: "The work is done." },
+  { tl: "Sa loob ng maraming buwan, inialay ni Rizal ang kanyang kalusugan, salapi, at buhay upang ibalik ang katotohanan.", en: "For many months, Rizal sacrificed his health, his money, and his life to restore the truth." },
+  { tl: "Ang bawat anotasyon ay isang saksak ng espada laban sa panloloko ng kolonyalismo.", en: "Each annotation was a sword thrust against the deception of colonialism." },
+  { tl: "Kahit ipinagbawal ng mga Kastila ang aklat at sinunog ang mga kopya, hindi nila mapipigilan ang apoy ng katotohanan.", en: "Though the Spanish banned the book and burned its copies, they could not extinguish the fire of truth." },
+  { tl: "Ang mga anotasyon ni Rizal ay nagsalita para sa mga ninunong walang boses — ang mga mandirigma, manlalayag, at mananahi na itinago ng kasaysayan.", en: "Rizal's annotations spoke for the voiceless ancestors — the warriors, sailors, and weavers erased from history." },
+  { tl: "Salamat sa inyong katapatan, mga dalubhasa. Ang pamana ng Pilipinas ay nananatili.", en: "Thank you for your devotion, scholars. The heritage of the Philippines endures." }
+];
+
+module.exports = { storyData, gameIntroLore, gameOutroLore };
