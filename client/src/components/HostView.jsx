@@ -49,8 +49,11 @@ const CinematicNarrator = ({ sentences, onComplete }) => {
       audioRef.current.pause();
     }
 
-    const textToSpeak = sentences[index].tl;
-    const audio = new Audio(`${serverUrl}/api/tts?text=${encodeURIComponent(textToSpeak)}&lang=tl`);
+    // If no Filipino text, treat as English-only sentence
+    const isEnglishOnly = !sentences[index].tl;
+    const textToSpeak = isEnglishOnly ? sentences[index].en : sentences[index].tl;
+    const lang = isEnglishOnly ? 'en' : 'tl';
+    const audio = new Audio(`${serverUrl}/api/tts?text=${encodeURIComponent(textToSpeak)}&lang=${lang}`);
     audioRef.current = audio;
     
     audio.onended = () => {
@@ -87,17 +90,40 @@ const CinematicNarrator = ({ sentences, onComplete }) => {
 
   if (!sentences || sentences.length === 0 || currentIndex >= sentences.length) return null;
 
+  const current = sentences[currentIndex];
+  const isEnglishOnly = !current?.tl;
+
   return (
     <div className="narrator-text-container" style={{ minHeight: '200px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-      <div key={currentIndex} className="narrator-sentence active narrator-tl" style={{ fontSize: '2.4rem', fontWeight: 'bold' }}>
-        {sentences[currentIndex]?.tl}
-      </div>
-      <div key={`en-${currentIndex}`} className="narrator-sentence active narrator-en" style={{ fontSize: '1.2rem', fontStyle: 'italic', marginTop: '1rem', color: 'var(--accent)' }}>
-        {sentences[currentIndex]?.en}
-      </div>
+      {isEnglishOnly ? (
+        // English-only mode: single large centred line
+        <div key={currentIndex} className="narrator-sentence active narrator-en" style={{ fontSize: '2rem', fontWeight: 'bold', textAlign: 'center', maxWidth: '800px', color: '#f4e8d3' }}>
+          {current?.en}
+        </div>
+      ) : (
+        // Bilingual mode: large Filipino + small English subtitle
+        <>
+          <div key={currentIndex} className="narrator-sentence active narrator-tl" style={{ fontSize: '2.4rem', fontWeight: 'bold' }}>
+            {current?.tl}
+          </div>
+          <div key={`en-${currentIndex}`} className="narrator-sentence active narrator-en" style={{ fontSize: '1.2rem', fontStyle: 'italic', marginTop: '1rem', color: 'var(--accent)' }}>
+            {current?.en}
+          </div>
+        </>
+      )}
     </div>
   );
 };
+
+const MINIGAME_INTRO_TEXT = [
+  { en: "Before the next chapter begins, a special challenge emerges — the Relics of Truth." },
+  { en: "Rizal's annotations did more than correct words. They uncovered physical artifacts of a civilization the colonizers tried to erase." },
+  { en: "On this screen, you will see a false colonial claim — something Morga wrote that Rizal proved wrong." },
+  { en: "On your phones, four objects will appear. Your mission: identify the one relic that disproves the colonial lie." },
+  { en: "The first scholar to uncover the correct relic earns one hundred Wisdom Points." },
+  { en: "The relic image on this screen is hidden in shadow. It will only be revealed when someone finds the truth." },
+  { en: "Scholars, take out your phones. The first Relic of Truth awaits." }
+];
 
 const MinigameHostView = ({ minigame, onProceed, minigameResolved, winnerName }) => {
   const audioRef = useRef(null);
@@ -308,7 +334,7 @@ export default function HostView({ hostToken }) {
         className="cinematic-bg" 
         style={{ backgroundImage: `url(${displayBg})` }} 
       />
-      <div className={`cinematic-overlay ${(status === 'cutscene' || status === 'outro') ? 'dark-mode' : ''}`} />
+      <div className={`cinematic-overlay ${(status === 'cutscene' || status === 'outro' || status === 'minigame_intro') ? 'dark-mode' : ''}`} />
       
       {/* Dramatic Doors Transition */}
       <div className={`theater-door door-left ${fade ? 'closed' : ''}`} />
@@ -477,6 +503,22 @@ export default function HostView({ hostToken }) {
               {wasCorrect 
                 ? (currentPhaseIndex >= totalPhases - 1 ? 'Behold the Legacy' : 'Turn the Page →') 
                 : 'Revise the Annals →'}
+            </button>
+          </div>
+        )}
+
+        {/* ========== MINIGAME INTRO / RELIC TUTORIAL ========== */}
+        {status === 'minigame_intro' && (
+          <div className="text-center" id="minigame-intro-panel" style={{ maxWidth: '900px', margin: '0 auto', paddingTop: '10vh' }}>
+            <h2 style={{ fontSize: '1rem', marginBottom: '3rem', letterSpacing: '8px', textTransform: 'uppercase', color: 'var(--accent)', opacity: 0.8 }}>
+              How to Play — Relics of Truth
+            </h2>
+            <CinematicNarrator
+              sentences={MINIGAME_INTRO_TEXT}
+              onComplete={handleProceed}
+            />
+            <button className="btn outline mt-4 animate-fade" onClick={handleProceed} style={{ animationDelay: '2s', padding: '0.8rem 2rem', opacity: 0.6, marginTop: '4rem' }}>
+              Skip Tutorial →
             </button>
           </div>
         )}

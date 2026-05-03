@@ -245,6 +245,22 @@ export default function PlayerView() {
         </div>
       )}
 
+      {/* ===== MINIGAME INTRO ===== */}
+      {status === 'minigame_intro' && (
+        <div className="glass-panel text-center" id="player-minigame-intro">
+          <div className="icon-container">
+            <ScrollText size={64} />
+          </div>
+          <h2 style={{ color: 'var(--accent)' }}>Relics of Truth</h2>
+          <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
+            Listen to the instructions on the host screen...
+          </p>
+          <p style={{ marginTop: '1rem', fontSize: '1.1rem' }}>
+            Get ready — you will need to identify a historical artifact on your phone.
+          </p>
+        </div>
+      )}
+
       {/* ===== MINIGAME ===== */}
       {status === 'minigame' && gameState.currentMinigame && (
         <div className="glass-panel text-center" id="player-minigame" style={{ padding: '1.5rem' }}>

@@ -27,8 +27,9 @@ const HOST_CODE = (process.env.HOST_CODE || generateCode()).toUpperCase();
 // Cleared on server restart — host simply re-enters the code shown in the console.
 const validHostTokens = new Set();
 
-// Initialize TTS engine
-const edgeTts = new EdgeTTS({ voice: 'fil-PH-AngeloNeural' });
+// TTS engines — Filipino for story narration, English for tutorial/mechanics
+const edgeTtsFil = new EdgeTTS({ voice: 'fil-PH-AngeloNeural' });
+const edgeTtsEn  = new EdgeTTS({ voice: 'en-GB-RyanNeural' });
 
 const app = express();
 app.use(cors({ origin: CLIENT_URL }));
@@ -58,12 +59,13 @@ app.get('/api/validate-token', (req, res) => {
 
 // === TTS ROUTE ===
 app.get('/api/tts', async (req, res) => {
-  const { text } = req.query;
+  const { text, lang } = req.query;
   if (!text) return res.status(400).send('No text provided');
 
   try {
+    const tts = lang === 'en' ? edgeTtsEn : edgeTtsFil;
     const tempFile = path.join(os.tmpdir(), `tts_${crypto.randomUUID()}.mp3`);
-    await edgeTts.ttsPromise(text, tempFile);
+    await tts.ttsPromise(text, tempFile);
     const buffer = fs.readFileSync(tempFile);
     fs.unlinkSync(tempFile);
     res.set('Content-Type', 'audio/mpeg');
@@ -94,7 +96,7 @@ const io = new Server(server, {
 
 // === GAME STATE ===
 let gameState = {
-  status: 'waiting', // waiting | cutscene | active | consequence | minigame | outro | ending
+  status: 'waiting', // waiting | cutscene | active | consequence | minigame_intro | minigame | outro | ending
   players: [],
   currentPhaseIndex: 0,
   votes: {},
@@ -106,7 +108,8 @@ let gameState = {
   cutsceneText: '',
   minigameResolved: false,
   minigameWinnerName: null,
-  relicWinners: []
+  relicWinners: [],
+  minigameIntroSeen: false
 };
 
 function buildBroadcastPayload() {
@@ -196,6 +199,7 @@ io.on('connection', (socket) => {
     gameState.minigameResolved = false;
     gameState.minigameWinnerName = null;
     gameState.relicWinners = [];
+    gameState.minigameIntroSeen = false;
     gameState.players.forEach(p => p.score = 0);
     resetVotes();
 
@@ -275,7 +279,8 @@ io.on('connection', (socket) => {
     }
     else if (gameState.status === 'consequence') {
       if (gameState.wasCorrect) {
-        gameState.status = 'minigame';
+        // Show tutorial before the very first minigame; skip it for all subsequent ones
+        gameState.status = !gameState.minigameIntroSeen ? 'minigame_intro' : 'minigame';
         gameState.minigameResolved = false;
         gameState.minigameWinnerName = null;
       } else {
@@ -283,6 +288,11 @@ io.on('connection', (socket) => {
       }
       resetVotes();
       console.log(`Proceeding to status: ${gameState.status}`);
+    }
+    else if (gameState.status === 'minigame_intro') {
+      gameState.status = 'minigame';
+      gameState.minigameIntroSeen = true;
+      console.log('Relic tutorial complete. Starting first minigame.');
     }
     else if (gameState.status === 'minigame') {
       if (gameState.currentPhaseIndex >= storyData.length - 1) {
