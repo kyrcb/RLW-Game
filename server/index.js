@@ -349,4 +349,25 @@ server.listen(PORT, () => {
   console.log(`  HOST CODE  :  ${HOST_CODE}`);
   console.log('  (Share with the game conductor only)');
   console.log('============================================\n');
+
+  // Send push notification via ntfy.sh if a topic is configured
+  const ntfyTopic = process.env.NTFY_TOPIC;
+  if (ntfyTopic) {
+    const https = require('https');
+    const body = `Host Code: ${HOST_CODE}\nJoin URL: ${GAME_URL}/join`;
+    const req = https.request({
+      hostname: 'ntfy.sh',
+      path: `/${ntfyTopic}`,
+      method: 'POST',
+      headers: {
+        'Title': 'RLW Game Started',
+        'Priority': 'high',
+        'Tags': 'key',
+        'Content-Length': Buffer.byteLength(body)
+      }
+    }, () => console.log('ntfy notification sent.'));
+    req.on('error', (e) => console.error('ntfy error:', e.message));
+    req.write(body);
+    req.end();
+  }
 });
