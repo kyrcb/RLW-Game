@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import serverUrl from '../utils/serverUrl';
 import { io } from 'socket.io-client';
 import { Howl } from 'howler';
-import { Pen, Scroll, ScrollText, Eye, ShieldCheck, Hourglass, Sword, Ship, Coins, Shield, Crosshair, Bomb, ShieldHalf, Coffee, Gem, ShoppingBasket, User, Cross, Bell, Map, CupSoda, Leaf, Wheat } from 'lucide-react';
+import { Pen, Scroll, ScrollText, Eye, ShieldCheck, Hourglass, Sword, Ship, Coins, Shield, Crosshair, Bomb, ShieldHalf, Coffee, Gem, ShoppingBasket, User, Cross, Bell, Map, CupSoda, Leaf, Wheat, Mail, BookOpen, FileText, BookMarked, Type, Image } from 'lucide-react';
 
 const sfxClick = new Howl({
   src: ['https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3'], // Working alternative click
@@ -29,7 +29,19 @@ const getIcon = (word) => {
     "Porcelain Vase": <CupSoda size={32} style={{ marginBottom: '8px' }} />,
     "Iron Sword": <Sword size={32} style={{ marginBottom: '8px' }} />,
     "Spices": <Leaf size={32} style={{ marginBottom: '8px' }} />,
-    "Rice": <Wheat size={32} style={{ marginBottom: '8px' }} />
+    "Rice": <Wheat size={32} style={{ marginBottom: '8px' }} />,
+    "Letter": <Mail size={32} style={{ marginBottom: '8px' }} />,
+    "Ancient Book": <BookOpen size={32} style={{ marginBottom: '8px' }} />,
+    "Decree": <FileText size={32} style={{ marginBottom: '8px' }} />,
+    "Painting": <Image size={32} style={{ marginBottom: '8px' }} />,
+    "Archive Scroll": <ScrollText size={32} style={{ marginBottom: '8px' }} />,
+    "Church Record": <FileText size={32} style={{ marginBottom: '8px' }} />,
+    "Dominican Chronicle": <BookMarked size={32} style={{ marginBottom: '8px' }} />,
+    "Crucifix": <Cross size={32} style={{ marginBottom: '8px' }} />,
+    "Rosary": <Coins size={32} style={{ marginBottom: '8px' }} />,
+    "Baybayin Tablet": <Type size={32} style={{ marginBottom: '8px' }} />,
+    "Quill": <Pen size={32} style={{ marginBottom: '8px' }} />,
+    "Coin": <Coins size={32} style={{ marginBottom: '8px' }} />
   };
   return map[word] || <Eye size={32} style={{ marginBottom: '8px' }} />;
 };
