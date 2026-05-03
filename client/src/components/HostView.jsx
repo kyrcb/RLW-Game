@@ -205,7 +205,7 @@ export default function HostView({ hostToken }) {
     window.addEventListener('keydown', attemptPlayMusic);
     attemptPlayMusic(); // Autoplay attempt (might be blocked by browser until interacted)
 
-    const socket = io(serverUrl, { auth: { token: hostToken } });
+    const socket = io(serverUrl, { auth: { token: hostToken }, transports: ['websocket'] });
     socketRef.current = socket;
 
     socket.on('init_data', (data) => {

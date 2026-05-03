@@ -62,7 +62,7 @@ export default function PlayerView() {
     // Dynamic background
     document.body.className = 'bg-manuscript';
 
-    const socket = io(serverUrl);
+    const socket = io(serverUrl, { transports: ['websocket'] });
     socketRef.current = socket;
 
     socket.on('init_data', (data) => {
