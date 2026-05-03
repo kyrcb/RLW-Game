@@ -53,6 +53,7 @@ export default function PlayerView() {
   const [hasVoted, setHasVoted] = useState(false);
   const [selectedOption, setSelectedOption] = useState(-1);
   const [wrongAnswer, setWrongAnswer] = useState(false);
+  const [countdown, setCountdown] = useState(0);
   const socketRef = useRef(null);
   const lastPhaseRef = useRef(-1);
   const lastMinigamePhaseRef = useRef(-1);
@@ -104,6 +105,20 @@ export default function PlayerView() {
 
     return () => socket.disconnect();
   }, []);
+
+  // Countdown driven by server's readyAt timestamp
+  useEffect(() => {
+    const readyAt = gameState?.readyAt;
+    if (!readyAt) { setCountdown(0); return; }
+
+    const tick = () => {
+      const remaining = Math.ceil((readyAt - Date.now()) / 1000);
+      setCountdown(remaining > 0 ? remaining : 0);
+    };
+    tick();
+    const id = setInterval(tick, 100);
+    return () => clearInterval(id);
+  }, [gameState?.readyAt]);
 
   const handleJoin = (e) => {
     e.preventDefault();
@@ -184,9 +199,16 @@ export default function PlayerView() {
           <h3 className="text-center" style={{ marginBottom: '0.5rem', color: 'var(--accent)' }}>
             Chapter {currentPhase.phase}
           </h3>
-          <h3 className="text-center" style={{ marginBottom: '1.5rem' }}>
-            {hasVoted ? 'Decree Sealed!' : 'Cast Your Decree!'}
+          <h3 className="text-center" style={{ marginBottom: '1rem' }}>
+            {hasVoted ? 'Decree Sealed!' : countdown > 0 ? 'Read the scenario...' : 'Cast Your Decree!'}
           </h3>
+
+          {countdown > 0 && (
+            <div className="animate-fade" style={{ textAlign: 'center', marginBottom: '1rem' }}>
+              <span style={{ display: 'inline-block', fontSize: '3rem', fontWeight: 'bold', fontFamily: 'Cinzel, serif', color: 'var(--accent)', lineHeight: 1 }}>{countdown}</span>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem', letterSpacing: '2px' }}>UNLOCKS IN {countdown}s</p>
+            </div>
+          )}
 
           {hasVoted && (
             <div className="vote-submitted-msg animate-fade">
@@ -201,7 +223,7 @@ export default function PlayerView() {
                 key={i}
                 className={`btn vote-btn ${hasVoted ? 'voted-state' : ''} ${selectedOption === i ? 'selected-vote' : ''}`}
                 onClick={() => handleVote(i)}
-                disabled={hasVoted}
+                disabled={hasVoted || countdown > 0}
                 id={`vote-option-${i}`}
               >
                 <span className="vote-letter">{String.fromCharCode(65 + i)}</span>
@@ -290,6 +312,13 @@ export default function PlayerView() {
             )}
           </div>
 
+          {countdown > 0 && (
+            <div className="animate-fade" style={{ textAlign: 'center', marginBottom: '0.75rem' }}>
+              <span style={{ display: 'inline-block', fontSize: '3rem', fontWeight: 'bold', fontFamily: 'Cinzel, serif', color: 'var(--accent)', lineHeight: 1 }}>{countdown}</span>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem', letterSpacing: '2px' }}>READ THE CLAIM FIRST</p>
+            </div>
+          )}
+
           {wrongAnswer && (
             <div className="animate-fade" style={{ background: 'rgba(180,40,40,0.7)', padding: '0.6rem 1rem', borderRadius: '6px', marginBottom: '0.75rem' }}>
               <p style={{ color: '#ffcccc', fontWeight: 'bold', margin: 0 }}>Wrong relic — try again!</p>
@@ -303,13 +332,13 @@ export default function PlayerView() {
                   key={i}
                   className={`btn vote-btn ${selectedOption === i ? 'selected-vote' : ''}`}
                   onClick={() => {
-                    if (hasVoted || gameState.minigameResolved) return;
+                    if (hasVoted || gameState.minigameResolved || countdown > 0) return;
                     sfxClick.play();
                     socketRef.current?.emit('submit_minigame_answer', { optionIndex: i });
                     setHasVoted(true);
                     setSelectedOption(i);
                   }}
-                  disabled={hasVoted || gameState.minigameResolved}
+                  disabled={hasVoted || gameState.minigameResolved || countdown > 0}
                   style={{ height: '100px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', padding: '0.75rem', border: '2px solid rgba(220,180,110,0.3)', borderRadius: '8px', wordBreak: 'break-word' }}
                 >
                   {getIcon(opt)}

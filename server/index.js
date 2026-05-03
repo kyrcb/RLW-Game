@@ -109,7 +109,8 @@ let gameState = {
   minigameResolved: false,
   minigameWinnerName: null,
   relicWinners: [],
-  minigameIntroSeen: false
+  minigameIntroSeen: false,
+  readyAt: null  // epoch ms when player input becomes valid (null = no lock)
 };
 
 function buildBroadcastPayload() {
@@ -129,6 +130,7 @@ function buildBroadcastPayload() {
     minigameResolved: gameState.minigameResolved,
     minigameWinnerName: gameState.minigameWinnerName,
     relicWinners: gameState.relicWinners,
+    readyAt: gameState.readyAt,
     currentMinigame: minigameData[gameState.currentPhaseIndex] || null,
     currentPhase: phase ? {
       phase: phase.phase,
@@ -137,6 +139,10 @@ function buildBroadcastPayload() {
       options: phase.options
     } : null
   };
+}
+
+function startReadyTimer() {
+  gameState.readyAt = Date.now() + 5000;
 }
 
 function resetVotes() {
@@ -200,6 +206,7 @@ io.on('connection', (socket) => {
     gameState.minigameWinnerName = null;
     gameState.relicWinners = [];
     gameState.minigameIntroSeen = false;
+    gameState.readyAt = null;
     gameState.players.forEach(p => p.score = 0);
     resetVotes();
 
@@ -210,6 +217,7 @@ io.on('connection', (socket) => {
   // 3. submit_vote: payload: { optionIndex }
   socket.on('submit_vote', ({ optionIndex }) => {
     if (gameState.status !== 'active') return;
+    if (gameState.readyAt && Date.now() < gameState.readyAt) return; // reading window
     if (gameState.votedPlayers.has(socket.id)) return;
     const isPlayer = gameState.players.some(p => p.id === socket.id);
     if (!isPlayer) return;
@@ -248,6 +256,7 @@ io.on('connection', (socket) => {
   // 4. submit_minigame_answer: payload: { optionIndex }
   socket.on('submit_minigame_answer', ({ optionIndex }) => {
     if (gameState.status !== 'minigame' || gameState.minigameResolved) return;
+    if (gameState.readyAt && Date.now() < gameState.readyAt) return; // reading window
 
     const currentMinigame = minigameData[gameState.currentPhaseIndex];
     if (optionIndex === currentMinigame.correctOptionIndex) {
@@ -275,16 +284,18 @@ io.on('connection', (socket) => {
 
     if (gameState.status === 'cutscene') {
       gameState.status = 'active';
+      startReadyTimer();
       console.log(`Proceeding to active phase ${gameState.currentPhaseIndex}`);
     }
     else if (gameState.status === 'consequence') {
       if (gameState.wasCorrect) {
-        // Show tutorial before the very first minigame; skip it for all subsequent ones
         gameState.status = !gameState.minigameIntroSeen ? 'minigame_intro' : 'minigame';
         gameState.minigameResolved = false;
         gameState.minigameWinnerName = null;
+        if (gameState.status === 'minigame') startReadyTimer();
       } else {
         gameState.status = 'active';
+        startReadyTimer();
       }
       resetVotes();
       console.log(`Proceeding to status: ${gameState.status}`);
@@ -292,6 +303,7 @@ io.on('connection', (socket) => {
     else if (gameState.status === 'minigame_intro') {
       gameState.status = 'minigame';
       gameState.minigameIntroSeen = true;
+      startReadyTimer();
       console.log('Relic tutorial complete. Starting first minigame.');
     }
     else if (gameState.status === 'minigame') {
